@@ -114,7 +114,7 @@ func toWatchProviders(providers []tmdb.Provider) []WatchProvider {
 	for i, p := range providers {
 		result[i] = WatchProvider{
 			Name:    p.ProviderName,
-			LogoURL: buildImageURL(p.LogoPath, "w92"),
+			LogoURL: buildImageURL(p.LogoPath, "w45"),
 		}
 	}
 	return result
@@ -126,7 +126,7 @@ func buildCredits(credits tmdb.Credits) *Credits {
 		cast[i] = Person{
 			ID:       c.ID,
 			Name:     c.Name,
-			PhotoURL: buildImageURL(c.ProfilePath, "w185"),
+			PhotoURL: buildImageURL(c.ProfilePath, "w92"),
 			Role:     c.Character,
 			Order:    c.Order,
 		}
@@ -140,7 +140,7 @@ func buildCredits(credits tmdb.Credits) *Credits {
 		person := Person{
 			ID:       c.ID,
 			Name:     c.Name,
-			PhotoURL: buildImageURL(c.ProfilePath, "w185"),
+			PhotoURL: buildImageURL(c.ProfilePath, "w92"),
 			Role:     c.Job,
 		}
 
