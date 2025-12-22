@@ -1,0 +1,39 @@
+{
+  "page": 1,
+  "results": [
+    {
+      "adult": false,
+      "backdrop_path": "/hZOuVkhAWX9viLJuaIsMh8cM3Jz.jpg",
+      "genre_ids": [80, 18],
+      "id": 62560,
+      "origin_country": ["US"],
+      "original_language": "en",
+      "original_name": "Mr. Robot",
+      "overview": "A contemporary and culturally resonant drama about a young programmer, Elliot, who suffers from a debilitating anti-social disorder and decides that he can only connect to people by hacking them. He wields his skills as a weapon to protect the people that he cares about. Elliot will find himself in the intersection between a cybersecurity firm he works for and the underworld organizations that are recruiting him to bring down corporate America.",
+      "popularity": 19.6163,
+      "poster_path": "/kv1nRqgebSsREnd7vdC2pSGjpLo.jpg",
+      "first_air_date": "2015-06-24",
+      "name": "Mr. Robot",
+      "vote_average": 8.259,
+      "vote_count": 5085
+    },
+    {
+      "adult": false,
+      "backdrop_path": null,
+      "genre_ids": [10767],
+      "id": 67088,
+      "origin_country": ["US"],
+      "original_language": "en",
+      "original_name": "Mr. Robot Digital After Show",
+      "overview": "A live weekly online series, hosted by The Verge, that dives into the complexities of USA Network's critically acclaimed hacker drama, Mr. Robot. Each episode features an in-depth discussion about the most recent episode of Mr. Robot from both an artistic and technological perspective.",
+      "popularity": 0.5586,
+      "poster_path": "/1BS8oN0AbWnOWOPLv49gfwrrpO2.jpg",
+      "first_air_date": "2016-07-20",
+      "name": "Mr. Robot Digital After Show",
+      "vote_average": 7,
+      "vote_count": 5
+    }
+  ],
+  "total_pages": 1,
+  "total_results": 2
+}

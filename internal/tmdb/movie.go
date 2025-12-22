@@ -4,38 +4,41 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
+
+	"github.com/rs/zerolog/log"
 )
 
+type Movie struct {
+	ID                  int                 `json:"id"`
+	ImdbID              string              `json:"imdb_id"`
+	Title               string              `json:"title"`
+	Tagline             string              `json:"tagline"`
+	Overview            string              `json:"overview"`
+	Genres              []Genre             `json:"genres"`
+	PosterPath          string              `json:"poster_path"`
+	Status              string              `json:"status"`
+	ReleaseDate         string              `json:"release_date"`
+	Runtime             int                 `json:"runtime"`
+	Budget              int                 `json:"budget"`
+	Revenue             int                 `json:"revenue"`
+	OriginalTitle       string              `json:"original_title"`
+	OriginalLanguage    string              `json:"original_language"`
+	OriginCountry       []string            `json:"origin_country"`
+	SpokenLanguages     []SpokenLanguage    `json:"spoken_languages"`
+	ProductionCompanies []ProductionCompany `json:"production_companies"`
+	ProductionCountries []ProductionCountry `json:"production_countries"`
+	WatchProviders      WatchProviders      `json:"watch/providers"`
+	Credits             Credits             `json:"credits"`
+}
+
 func (c *Client) GetMovie(ctx context.Context, id int) (*Movie, error) {
-	url := fmt.Sprintf("%s/movie/%d?append_to_response=watch/providers,credits", c.baseURL, id)
+	log.Info().Int("id", id).Msg("Getting movie from TMDB")
+	extras := "watch/providers,credits"
+	path := fmt.Sprintf("/movie/%d?append_to_response=%s", id, extras)
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	body, err := c.get(ctx, path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.accessToken))
-	req.Header.Set("Accept", "application/json")
-
-	res, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute request: %w", err)
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode == http.StatusNotFound {
-		return nil, ErrNotFound
-	}
-
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status: %d", res.StatusCode)
-	}
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, err
 	}
 
 	var movie Movie

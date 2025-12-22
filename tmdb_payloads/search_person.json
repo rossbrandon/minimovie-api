@@ -1,0 +1,162 @@
+{
+  "page": 1,
+  "results": [
+    {
+      "adult": false,
+      "gender": 2,
+      "id": 10859,
+      "known_for_department": "Acting",
+      "name": "Ryan Reynolds",
+      "original_name": "Ryan Reynolds",
+      "popularity": 6.5754,
+      "profile_path": "/trzgptffGvAlAT6MEu01fz47cLW.jpg",
+      "known_for": [
+        {
+          "adult": false,
+          "backdrop_path": "/rFj9IKlL75B2pXhZA60jkNWvxeW.jpg",
+          "id": 293660,
+          "title": "Deadpool",
+          "original_title": "Deadpool",
+          "overview": "The origin story of former Special Forces operative turned mercenary Wade Wilson, who, after being subjected to a rogue experiment that leaves him with accelerated healing powers, adopts the alter ego Deadpool. Armed with his new abilities and a dark, twisted sense of humor, Deadpool hunts down the man who nearly destroyed his life.",
+          "poster_path": "/3E53WEZJqP6aM84D8CckXx4pIHw.jpg",
+          "media_type": "movie",
+          "original_language": "en",
+          "genre_ids": [28, 12, 35],
+          "popularity": 14.5439,
+          "release_date": "2016-02-09",
+          "video": false,
+          "vote_average": 7.623,
+          "vote_count": 32152
+        },
+        {
+          "adult": false,
+          "backdrop_path": "/3P52oz9HPQWxcwHOwxtyrVV1LKi.jpg",
+          "id": 383498,
+          "title": "Deadpool 2",
+          "original_title": "Deadpool 2",
+          "overview": "Wisecracking mercenary Deadpool battles the evil and powerful Cable and other bad guys to save a boy's life.",
+          "poster_path": "/to0spRl1CMDvyUbOnbb4fTk3VAd.jpg",
+          "media_type": "movie",
+          "original_language": "en",
+          "genre_ids": [28, 35, 12],
+          "popularity": 10.6619,
+          "release_date": "2018-05-15",
+          "video": false,
+          "vote_average": 7.489,
+          "vote_count": 18786
+        },
+        {
+          "adult": false,
+          "backdrop_path": "/7py8kUCYaOdFn1TfVS87BDBySOz.jpg",
+          "id": 550988,
+          "title": "Free Guy",
+          "original_title": "Free Guy",
+          "overview": "A bank teller discovers he is actually a background player in an open-world video game, and decides to become the hero of his own story. Now, in a world where there are no limits, he is determined to be the guy who saves his world his way before it's too late.",
+          "poster_path": "/6PFJrMvoQwBxQITLYHj09VeJ37q.jpg",
+          "media_type": "movie",
+          "original_language": "en",
+          "genre_ids": [35, 12, 878],
+          "popularity": 8.6789,
+          "release_date": "2021-08-11",
+          "video": false,
+          "vote_average": 7.462,
+          "vote_count": 9442
+        }
+      ]
+    },
+    {
+      "adult": false,
+      "gender": 0,
+      "id": 1690905,
+      "known_for_department": "Costume & Make-Up",
+      "name": "Ryan J. Reynolds",
+      "original_name": "Ryan J. Reynolds",
+      "popularity": 0.0143,
+      "profile_path": null,
+      "known_for": [
+        {
+          "adult": false,
+          "backdrop_path": null,
+          "id": 410270,
+          "title": "2 Jennifer",
+          "original_title": "2 Jennifer",
+          "overview": "Two filmmakers attempt to make the perfect sequel to \"To Jennifer,\" however a dark secret threatens the lives of everyone involved. Jennifer, a beautiful actress, now has two options: become the heroine of the film, or face a brutal death.",
+          "poster_path": "/5tNAFlELYejCB21xh6DnVjBOpQs.jpg",
+          "media_type": "movie",
+          "original_language": "en",
+          "genre_ids": [28, 27],
+          "popularity": 4.4791,
+          "release_date": "2016-06-03",
+          "video": false,
+          "vote_average": 4.2,
+          "vote_count": 17
+        }
+      ]
+    },
+    {
+      "adult": false,
+      "gender": 2,
+      "id": 3195037,
+      "known_for_department": "Directing",
+      "name": "Ryan Ragreynolds",
+      "original_name": "Ryan Ragreynolds",
+      "popularity": 0.1034,
+      "profile_path": "/7DJMccLlbw1tOuvA0C4xvREqgfq.jpg",
+      "known_for": [
+        {
+          "adult": false,
+          "backdrop_path": "/7UPSiMZzQa0by3MIPRyxv9RvqlE.jpg",
+          "id": 1300933,
+          "title": "Tidtakeren",
+          "original_title": "Tidtakeren",
+          "overview": "A hunter travels through the Norwegian wilderness to track down a creature meddling with time.",
+          "poster_path": "/nJTWTC3GY7tZl23LXqhPViGvVn.jpg",
+          "media_type": "movie",
+          "original_language": "en",
+          "genre_ids": [27, 14, 53],
+          "popularity": 0.4781,
+          "release_date": "2024-07-07",
+          "video": false,
+          "vote_average": 8,
+          "vote_count": 1
+        },
+        {
+          "adult": false,
+          "backdrop_path": "/ji8ApKvOglFbRmStuJ6KHEbg3be.jpg",
+          "id": 1135607,
+          "title": "HOOVED",
+          "original_title": "HOOVED",
+          "overview": "A troubled man battles with intrusive thoughts.",
+          "poster_path": "/6322RVtpwrOcEZ5tvYNelgmi7R.jpg",
+          "media_type": "movie",
+          "original_language": "en",
+          "genre_ids": [35, 53],
+          "popularity": 0.0721,
+          "release_date": "2020-10-04",
+          "video": false,
+          "vote_average": 0,
+          "vote_count": 0
+        },
+        {
+          "adult": false,
+          "backdrop_path": "/tj19iLVxmjNCRUBhEBEvyjOtOZP.jpg",
+          "id": 1193611,
+          "title": "The Resurrection",
+          "original_title": "The Resurrection",
+          "overview": "A man travels from Alabama to Scotland to investigate the bizarre circumstances surrounding his friend's death.",
+          "poster_path": "/kfxyirW3OYSHs6LbMPvPfSzFYxH.jpg",
+          "media_type": "movie",
+          "original_language": "en",
+          "genre_ids": [35],
+          "popularity": 0.5098,
+          "release_date": "2023-10-20",
+          "video": false,
+          "vote_average": 0,
+          "vote_count": 0
+        }
+      ]
+    }
+  ],
+  "total_pages": 1,
+  "total_results": 3
+}
