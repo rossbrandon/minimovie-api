@@ -15,7 +15,7 @@ func NewRouter(h *handlers.Handlers, timeout int) *chi.Mux {
 	r.Use(middleware.Timeout(time.Duration(timeout) * time.Second))
 
 	// Search
-	r.Get("/search", h.SearchMulti)
+	r.Get("/search", h.Search)
 
 	// Movies
 	r.Get("/movies/{id}", h.GetMovie)

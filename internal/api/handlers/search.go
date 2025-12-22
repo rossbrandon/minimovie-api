@@ -9,6 +9,14 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+type MediaType string
+
+const (
+	MediaTypeMovie  MediaType = "movie"
+	MediaTypeSeries MediaType = "series"
+	MediaTypePerson MediaType = "person"
+)
+
 type SearchResponse struct {
 	Page         int            `json:"page"`
 	TotalPages   int            `json:"totalPages"`
@@ -17,16 +25,16 @@ type SearchResponse struct {
 }
 
 type SearchResult struct {
-	ID          int    `json:"id"`
-	MediaType   string `json:"mediaType"`
-	Title       string `json:"title"`
-	Overview    string `json:"overview,omitempty"`
-	PosterURL   string `json:"posterUrl,omitempty"`
-	ReleaseDate string `json:"releaseDate,omitempty"`
-	KnownFor    string `json:"knownFor,omitempty"`
+	ID          int       `json:"id"`
+	MediaType   MediaType `json:"mediaType"`
+	Title       string    `json:"title"`
+	Overview    string    `json:"overview,omitempty"`
+	PosterURL   string    `json:"posterUrl,omitempty"`
+	ReleaseDate string    `json:"releaseDate,omitempty"`
+	KnownFor    string    `json:"knownFor,omitempty"`
 }
 
-func (h *Handlers) SearchMulti(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query().Get("q")
 	if query == "" {
 		httputil.Error(w, http.StatusBadRequest, "Query parameter 'q' is required")
@@ -40,9 +48,27 @@ func (h *Handlers) SearchMulti(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	results, err := h.tmdbClient.SearchMulti(r.Context(), query, page)
+	mediaType := MediaType(r.URL.Query().Get("type"))
+
+	var results *tmdb.SearchResults
+	var err error
+
+	switch mediaType {
+	case MediaTypeMovie:
+		results, err = h.tmdbClient.SearchMovies(r.Context(), query, page)
+	case MediaTypeSeries:
+		results, err = h.tmdbClient.SearchSeries(r.Context(), query, page)
+	case MediaTypePerson:
+		results, err = h.tmdbClient.SearchPerson(r.Context(), query, page)
+	case "", "all":
+		results, err = h.tmdbClient.SearchMulti(r.Context(), query, page)
+	default:
+		httputil.Error(w, http.StatusBadRequest, "Invalid type parameter. Must be one of: all, movie, series, person")
+		return
+	}
+
 	if err != nil {
-		log.Error().Err(err).Str("query", query).Msg("failed to search")
+		log.Error().Err(err).Str("query", query).Str("type", string(mediaType)).Msg("failed to search")
 		httputil.Error(w, http.StatusInternalServerError, "Failed to search")
 		return
 	}
@@ -66,21 +92,23 @@ func toSearchResponse(results *tmdb.SearchResults) *SearchResponse {
 
 func toSearchResult(r tmdb.SearchResult) SearchResult {
 	result := SearchResult{
-		ID:        r.ID,
-		MediaType: r.MediaType,
-		Overview:  r.Overview,
+		ID:       r.ID,
+		Overview: r.Overview,
 	}
 
 	switch r.MediaType {
-	case "movie":
+	case tmdb.MediaTypeMovie:
+		result.MediaType = MediaTypeMovie
 		result.Title = r.Title
 		result.PosterURL = buildImageURL(r.PosterPath, "w185")
 		result.ReleaseDate = r.ReleaseDate
-	case "tv":
+	case tmdb.MediaTypeTV:
+		result.MediaType = MediaTypeSeries
 		result.Title = r.Name
 		result.PosterURL = buildImageURL(r.PosterPath, "w185")
 		result.ReleaseDate = r.FirstAirDate
-	case "person":
+	case tmdb.MediaTypePerson:
+		result.MediaType = MediaTypePerson
 		result.Title = r.Name
 		result.PosterURL = buildImageURL(r.ProfilePath, "w185")
 		result.KnownFor = r.KnownForDepartment
