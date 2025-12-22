@@ -136,7 +136,7 @@ func toSeriesDetails(series *tmdb.Series) *SeriesDetails {
 			SeasonNumber: s.SeasonNumber,
 			EpisodeCount: s.EpisodeCount,
 			AirDate:      s.AirDate,
-			PosterURL:    buildImageURL(s.PosterPath, "w185"),
+			PosterURL:    buildImageURL(s.PosterPath, "w92"),
 			VoteAverage:  s.VoteAverage,
 		})
 	}

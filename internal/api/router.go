@@ -14,8 +14,10 @@ func NewRouter(h *handlers.Handlers, timeout int) *chi.Mux {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(time.Duration(timeout) * time.Second))
 
+	r.Get("/search", h.SearchMulti)
 	r.Get("/movies/{id}", h.GetMovie)
 	r.Get("/series/{id}", h.GetSeries)
+	r.Get("/people/{id}", h.GetPerson)
 
 	return r
 }

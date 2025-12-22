@@ -51,3 +51,42 @@ type Job struct {
 	Job          string `json:"job"`
 	EpisodeCount int    `json:"episode_count"`
 }
+
+// CombinedCredits represents a person's filmography (movies/shows they worked on).
+// This is the inverse of Credits which lists people who worked on a movie/show.
+type CombinedCredits struct {
+	Cast []CombinedCastCredit `json:"cast"`
+	Crew []CombinedCrewCredit `json:"crew"`
+}
+
+type CombinedCreditMovie struct {
+	Title       string `json:"title"`
+	ReleaseDate string `json:"release_date"`
+}
+
+type CombinedCreditShow struct {
+	Name         string `json:"name"`
+	FirstAirDate string `json:"first_air_date"`
+}
+
+// CombinedCreditBase contains fields shared by both cast and crew credits.
+type CombinedCreditBase struct {
+	ID         int    `json:"id"`
+	MediaType  string `json:"media_type"`
+	PosterPath string `json:"poster_path"`
+	CombinedCreditMovie
+	CombinedCreditShow
+}
+
+type CombinedCastCredit struct {
+	CombinedCreditBase
+	Character    string `json:"character"`
+	EpisodeCount int    `json:"episode_count"`
+}
+
+type CombinedCrewCredit struct {
+	CombinedCreditBase
+	Job          string `json:"job"`
+	Department   string `json:"department"`
+	EpisodeCount int    `json:"episode_count"`
+}
