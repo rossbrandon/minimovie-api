@@ -10,11 +10,12 @@ import (
 )
 
 type Config struct {
-	Port            string
-	Timeout         int
-	TmdbBaseUrl     string
-	TmdbTimeout     int
-	TmdbAccessToken string
+	Port              string
+	Timeout           int
+	TmdbBaseUrl       string
+	TmdbTimeout       int
+	TmdbAccessToken   string
+	MiniMovieUiSecret string
 }
 
 const defaultPort = "8080"
@@ -64,11 +65,14 @@ func Load() (*Config, error) {
 		tmdbTimeout = tmdbTimeoutInt
 	}
 
+	miniMovieUiSecret := os.Getenv("MINI_MOVIE_UI_SECRET")
+
 	return &Config{
-		Port:            port,
-		Timeout:         timeout,
-		TmdbBaseUrl:     tmdbBaseUrl,
-		TmdbTimeout:     tmdbTimeout,
-		TmdbAccessToken: tmdbAccessToken,
+		Port:              port,
+		Timeout:           timeout,
+		TmdbBaseUrl:       tmdbBaseUrl,
+		TmdbTimeout:       tmdbTimeout,
+		TmdbAccessToken:   tmdbAccessToken,
+		MiniMovieUiSecret: miniMovieUiSecret,
 	}, nil
 }

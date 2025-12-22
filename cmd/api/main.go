@@ -29,7 +29,7 @@ func main() {
 
 	handlers := handlers.NewHandlers(tmdbClient)
 
-	r := api.NewRouter(handlers, config.Timeout)
+	r := api.NewRouter(handlers, config)
 	log.Info().Msg("Server is listening on port " + config.Port)
 	err = http.ListenAndServe(":"+config.Port, r)
 	if err != nil {
