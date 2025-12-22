@@ -6,15 +6,7 @@ import (
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 )
 
-type Person struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	PhotoURL string `json:"photoUrl,omitempty"`
-	Role     string `json:"role,omitempty"`
-	Order    int    `json:"order,omitempty"`
-}
-
-type WatchProviders struct {
+type WhereToWatch struct {
 	Stream []WatchProvider `json:"stream,omitempty"`
 	Rent   []WatchProvider `json:"rent,omitempty"`
 	Buy    []WatchProvider `json:"buy,omitempty"`
@@ -34,13 +26,13 @@ func buildImageURL(path string, size string) string {
 	return fmt.Sprintf("https://image.tmdb.org/t/p/%s%s", size, path)
 }
 
-func buildWatchProviders(wp tmdb.WatchProviders, country string) *WatchProviders {
+func buildWhereToWatch(wp tmdb.WatchProviders, country string) *WhereToWatch {
 	countryProviders, ok := wp.Results[country]
 	if !ok {
 		return nil
 	}
 
-	return &WatchProviders{
+	return &WhereToWatch{
 		Stream: toWatchProviders(countryProviders.Flatrate),
 		Rent:   toWatchProviders(countryProviders.Rent),
 		Buy:    toWatchProviders(countryProviders.Buy),

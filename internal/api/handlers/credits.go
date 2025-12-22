@@ -2,6 +2,14 @@ package handlers
 
 import "github.com/rossbrandon/minimovie-api/internal/tmdb"
 
+type Person struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	PhotoURL string `json:"photoUrl,omitempty"`
+	Role     string `json:"role,omitempty"`
+	Order    int    `json:"order,omitempty"`
+}
+
 type Credits struct {
 	Cast             []Person `json:"cast,omitempty"`
 	Directors        []Person `json:"directors,omitempty"`

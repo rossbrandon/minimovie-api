@@ -12,30 +12,30 @@ import (
 )
 
 type SeriesDetails struct {
-	ID                  int             `json:"id"`
-	Name                string          `json:"name"`
-	Tagline             string          `json:"tagline"`
-	Overview            string          `json:"overview"`
-	Genres              []string        `json:"genres"`
-	PosterURL           string          `json:"posterUrl"`
-	Status              string          `json:"status"`
-	InProduction        bool            `json:"inProduction"`
-	FirstAirDate        string          `json:"firstAirDate"`
-	LastAirDate         string          `json:"lastAirDate"`
-	NumberOfSeasons     int             `json:"numberOfSeasons"`
-	NumberOfEpisodes    int             `json:"numberOfEpisodes"`
-	EpisodeRunTime      []int           `json:"episodeRunTime"`
-	OriginalName        string          `json:"originalName"`
-	OriginalLanguage    string          `json:"originalLanguage"`
-	OriginCountry       string          `json:"originCountry"`
-	SpokenLanguages     []string        `json:"spokenLanguages"`
-	ProductionCompanies []string        `json:"productionCompanies"`
-	ProductionCountries []string        `json:"productionCountries"`
-	CreatedBy           []Person        `json:"createdBy"`
-	Networks            []Network       `json:"networks"`
-	Seasons             []Season        `json:"seasons"`
-	WatchProviders      *WatchProviders `json:"watchProviders,omitempty"`
-	Credits             *Credits        `json:"credits,omitempty"`
+	ID                  int           `json:"id"`
+	Name                string        `json:"name"`
+	Tagline             string        `json:"tagline"`
+	Overview            string        `json:"overview"`
+	Genres              []string      `json:"genres"`
+	PosterURL           string        `json:"posterUrl"`
+	Status              string        `json:"status"`
+	InProduction        bool          `json:"inProduction"`
+	FirstAirDate        string        `json:"firstAirDate"`
+	LastAirDate         string        `json:"lastAirDate"`
+	NumberOfSeasons     int           `json:"numberOfSeasons"`
+	NumberOfEpisodes    int           `json:"numberOfEpisodes"`
+	EpisodeRunTime      []int         `json:"episodeRunTime"`
+	OriginalName        string        `json:"originalName"`
+	OriginalLanguage    string        `json:"originalLanguage"`
+	OriginCountry       string        `json:"originCountry"`
+	SpokenLanguages     []string      `json:"spokenLanguages"`
+	ProductionCompanies []string      `json:"productionCompanies"`
+	ProductionCountries []string      `json:"productionCountries"`
+	CreatedBy           []Person      `json:"createdBy"`
+	Networks            []Network     `json:"networks"`
+	Seasons             []Season      `json:"seasons"`
+	WhereToWatch        *WhereToWatch `json:"whereToWatch,omitempty"`
+	Credits             *Credits      `json:"credits,omitempty"`
 }
 
 type Network struct {
@@ -164,7 +164,7 @@ func toSeriesDetails(series *tmdb.Series) *SeriesDetails {
 		CreatedBy:           createdBy,
 		Networks:            networks,
 		Seasons:             seasons,
-		WatchProviders:      buildWatchProviders(series.WatchProviders, "US"),
+		WhereToWatch:        buildWhereToWatch(series.WatchProviders, "US"),
 		Credits:             buildAggregateCredits(series.AggregateCredits),
 	}
 }

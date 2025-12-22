@@ -12,26 +12,26 @@ import (
 )
 
 type MovieDetails struct {
-	ID                  int             `json:"id"`
-	ImdbID              string          `json:"imdbID"`
-	Title               string          `json:"title"`
-	Tagline             string          `json:"tagline"`
-	Overview            string          `json:"overview"`
-	Genres              []string        `json:"genres"`
-	PosterURL           string          `json:"posterUrl"`
-	Status              string          `json:"status"`
-	ReleaseDate         string          `json:"releaseDate"`
-	Runtime             int             `json:"runtime"`
-	Budget              int             `json:"budget"`
-	Revenue             int             `json:"revenue"`
-	OriginalTitle       string          `json:"originalTitle"`
-	OriginalLanguage    string          `json:"originalLanguage"`
-	OriginCountry       string          `json:"originCountry"`
-	SpokenLanguages     []string        `json:"spokenLanguages"`
-	ProductionCompanies []string        `json:"productionCompanies"`
-	ProductionCountries []string        `json:"productionCountries"`
-	WatchProviders      *WatchProviders `json:"watchProviders,omitempty"`
-	Credits             *Credits        `json:"credits,omitempty"`
+	ID                  int           `json:"id"`
+	ImdbID              string        `json:"imdbID"`
+	Title               string        `json:"title"`
+	Tagline             string        `json:"tagline"`
+	Overview            string        `json:"overview"`
+	Genres              []string      `json:"genres"`
+	PosterURL           string        `json:"posterUrl"`
+	Status              string        `json:"status"`
+	ReleaseDate         string        `json:"releaseDate"`
+	Runtime             int           `json:"runtime"`
+	Budget              int           `json:"budget"`
+	Revenue             int           `json:"revenue"`
+	OriginalTitle       string        `json:"originalTitle"`
+	OriginalLanguage    string        `json:"originalLanguage"`
+	OriginCountry       string        `json:"originCountry"`
+	SpokenLanguages     []string      `json:"spokenLanguages"`
+	ProductionCompanies []string      `json:"productionCompanies"`
+	ProductionCountries []string      `json:"productionCountries"`
+	WhereToWatch        *WhereToWatch `json:"whereToWatch,omitempty"`
+	Credits             *Credits      `json:"credits,omitempty"`
 }
 
 func (h *Handlers) GetMovie(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +101,7 @@ func toMovieDetails(movie *tmdb.Movie) *MovieDetails {
 		SpokenLanguages:     spokenLanguages,
 		ProductionCompanies: productionCompanies,
 		ProductionCountries: productionCountries,
-		WatchProviders:      buildWatchProviders(movie.WatchProviders, "US"),
+		WhereToWatch:        buildWhereToWatch(movie.WatchProviders, "US"),
 		Credits:             buildCredits(movie.Credits),
 	}
 }

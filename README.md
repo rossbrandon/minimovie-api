@@ -43,7 +43,7 @@ make start
 minimovie-api/
 ├── cmd/
 │   └── api/
-│       └── main.go                 # Entry point, contains application main.go
+│       └── main.go                 # Entry point
 │
 ├── config/
 │   └── config.go                   # Config definitions and loader
@@ -51,20 +51,31 @@ minimovie-api/
 ├── internal/
 │   ├── api/
 │   │   ├── router.go               # Chi router setup, registers all routes
-│   │   ├── response.go             # JSON(w, status, data), Error(w, status, msg)
 │   │   └── handlers/
-│   │       ├── handlers.go         # Handlers struct + New(tmdbClient, cfg)
-│   │       ├── search.go           # SearchResponse + GetSearch()
-│   │       ├── movie.go            # MovieResponse + GetMovie()
-│   │       ├── show.go             # ShowResponse + GetShow()
-│   │       └── person.go           # PersonResponse + GetPerson()
+│   │       ├── handlers.go         # Chi API Handlers
+│   │       ├── credits.go          # Credits types and functions
+│   │       ├── watch.go            # WatchProviders types and functions
+│   │       ├── search.go           # SearchMulti handler
+│   │       ├── movie.go            # GetMovie handler
+│   │       ├── series.go           # GetSeries handler
+│   │       ├── season.go           # GetSeason handler
+│   │       ├── episode.go          # GetEpisode handler
+│   │       └── person.go           # GetPerson handler
+│   │
+│   ├── httputil/
+│   │   └── response.go             # JSON(w, status, data), Error(w, status, msg)
 │   │
 │   └── tmdb/
-│       ├── client.go               # Client struct + NewClient(accessToken)
-│       ├── search.go               # TMDBSearchResponse + SearchMulti()
-│       ├── movie.go                # TMDBMovieResponse + GetMovie()
-│       ├── show.go                 # TMDBShowResponse + GetShow()
-│       └── person.go               # TMDBPersonResponse + GetPerson()
+│       ├── client.go               # TMDB Client
+│       ├── credits.go              # Credits, AggregateCredits, CombinedCredits types
+│       ├── metadata.go             # Shared types
+│       ├── watch.go                # WatchProviders types
+│       ├── search.go               # SearchMulti()
+│       ├── movie.go                # GetMovie()
+│       ├── series.go               # GetSeries()
+│       ├── season.go               # GetSeason()
+│       ├── episode.go              # GetEpisode()
+│       └── person.go               # GetPerson()
 │
 ├── .env
 ├── .gitignore
