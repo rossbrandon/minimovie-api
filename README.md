@@ -178,3 +178,21 @@ TMDB API calls are limited per request to avoid N+1 problems. When fetching is r
 
 - **Movies/Episodes**: Single age at release (`ageAtRelease: 32`)
 - **Series**: Age range from first to last air date (`ageRange: "25-32"`)
+
+## Deployment
+
+### Cloudflare
+
+#### API Allowlist
+
+The following [Security Rule](https://dash.cloudflare.com/dd630cbdf4b6a4502d25f006d309725c/minimovie.info/security/security-rules) has been defined for the `api.minimovie.info` domain.
+
+```
+(http.host eq "api.minimovie.info"
+and not http.request.uri.path in {"/ping" "/search"}
+and not starts_with(http.request.uri.path, "/series/")
+and not starts_with(http.request.uri.path, "/people/")
+and not starts_with(http.request.uri.path, "/movies/")
+and not starts_with(http.request.uri.path, "/series/")
+)
+```

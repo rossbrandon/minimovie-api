@@ -1,12 +1,12 @@
-CREATE TABLE IF NOT EXISTS people (
-    id INTEGER PRIMARY KEY,
-    name TEXT,
-    date_of_birth DATE,
-    date_of_death DATE,
-    popularity REAL DEFAULT 0,
-    fetched BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    updated_at TIMESTAMP DEFAULT NOW()
+create table if not exists people (
+    id integer primary key,
+    name text,
+    date_of_birth date,
+    date_of_death date,
+    popularity real default 0,
+    fetched boolean default false,
+    created_at timestamp default now(),
+    updated_at timestamp default now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_people_fetched ON people(fetched);
+create index if not exists idx_people_fetched on people(fetched);

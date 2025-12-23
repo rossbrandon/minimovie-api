@@ -111,7 +111,6 @@ func (r *Resolver) checkCache(people []PersonRef) (map[int]store.PersonDates, []
 				Fetched:     true,
 			}
 		} else {
-			log.Info().Int("person_id", p.ID).Msg("cache miss for person")
 			misses = append(misses, p)
 		}
 	}
@@ -135,10 +134,12 @@ func (r *Resolver) getPeopleFromDb(ctx context.Context, misses []PersonRef, resu
 
 	for id, dates := range dbResults {
 		result[id] = dates
-		log.Info().Int("person_id", id).Msg("got person from database: updating cache")
-		r.cache.Set(id, dates.DateOfBirth, dates.DateOfDeath)
+		if dates.Fetched {
+			r.cache.Set(id, dates.DateOfBirth, dates.DateOfDeath)
+		}
 	}
 
+	log.Info().Int("db_results_count", len(dbResults)).Msg("got people from database")
 	return dbResults
 }
 

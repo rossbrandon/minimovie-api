@@ -7,6 +7,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rossbrandon/minimovie-api/internal/metrics"
 	"github.com/rs/zerolog/log"
 )
 
@@ -54,6 +55,8 @@ func (s *PersonStore) GetPeople(ctx context.Context, personIDs []int) (map[int]P
 		return make(map[int]PersonDates), nil
 	}
 
+	defer metrics.TrackDbDuration(ctx, "read")()
+
 	query := `
 		SELECT id, date_of_birth, date_of_death, popularity, fetched
 		FROM people
@@ -98,6 +101,8 @@ func (s *PersonStore) UpsertPersonBatch(ctx context.Context, people map[int]Pers
 	if len(people) == 0 {
 		return nil
 	}
+
+	defer metrics.TrackDbDuration(ctx, "write")()
 
 	batch := &pgx.Batch{}
 	query := `

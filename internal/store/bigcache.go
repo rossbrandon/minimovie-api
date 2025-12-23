@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/allegro/bigcache/v3"
+	"github.com/rossbrandon/minimovie-api/internal/metrics"
 	"github.com/rs/zerolog/log"
 )
 
@@ -57,7 +58,13 @@ func decode(data []byte) (dob, dod string) {
 func (a *BigCacheAdapter) Get(personID int) (dob, dod string, found bool) {
 	data, err := a.cache.Get(key(personID))
 	if err != nil {
+		if metrics.M != nil {
+			metrics.M.RecordCacheMiss(context.Background())
+		}
 		return "", "", false
+	}
+	if metrics.M != nil {
+		metrics.M.RecordCacheHit(context.Background())
 	}
 	dob, dod = decode(data)
 	return dob, dod, true
@@ -66,6 +73,10 @@ func (a *BigCacheAdapter) Get(personID int) (dob, dod string, found bool) {
 func (a *BigCacheAdapter) Set(personID int, dob, dod string) {
 	if err := a.cache.Set(key(personID), encode(dob, dod)); err != nil {
 		log.Warn().Err(err).Int("person_id", personID).Msg("failed to set cache entry")
+		return
+	}
+	if metrics.M != nil {
+		metrics.M.RecordCacheWrite(context.Background())
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/jwtauth/v5"
 	"github.com/rossbrandon/minimovie-api/config"
 	"github.com/rossbrandon/minimovie-api/internal/api/handlers"
+	"github.com/rossbrandon/minimovie-api/internal/metrics"
 )
 
 var tokenAuth *jwtauth.JWTAuth
@@ -18,6 +19,7 @@ func NewRouter(h *handlers.Handlers, config *config.Config) *chi.Mux {
 	tokenAuth = jwtauth.New("HS256", []byte(config.MiniMovieUiSecret), nil)
 
 	r := chi.NewRouter()
+	r.Use(metrics.Middleware)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(time.Duration(config.Timeout) * time.Second))

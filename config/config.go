@@ -17,14 +17,15 @@ type Config struct {
 	TmdbAccessToken        string
 	MiniMovieUiSecret      string
 	DatabaseURL            string
-	MaxTMDBFetchPerRequest int
+	MaxTmdbFetchPerRequest int
+	OTelEnabled            bool
 }
 
 const defaultPort = "8080"
 const defaultTimeout int = 10
 const defaultTmdbBaseUrl = "https://api.themoviedb.org/3"
 const defaultTmdbTimeout int = 10
-const defaultMaxTMDBFetchPerRequest int = 10
+const defaultMaxTmdbFetchPerRequest int = 10
 
 func Load() (*Config, error) {
 	tmdbAccessToken := os.Getenv("TMDB_ACCESS_TOKEN")
@@ -75,14 +76,23 @@ func Load() (*Config, error) {
 		return nil, errors.New("DATABASE_URL is not set")
 	}
 
-	maxTMDBFetchPerRequestStr := os.Getenv("MAX_TMDB_FETCH_PER_REQUEST")
-	maxTMDBFetchPerRequest := defaultMaxTMDBFetchPerRequest
-	if maxTMDBFetchPerRequestStr != "" {
-		maxTMDBFetchPerRequestInt, err := strconv.Atoi(maxTMDBFetchPerRequestStr)
+	maxTmdbFetchPerRequestStr := os.Getenv("MAX_TMDB_FETCH_PER_REQUEST")
+	maxTmdbFetchPerRequest := defaultMaxTmdbFetchPerRequest
+	if maxTmdbFetchPerRequestStr != "" {
+		maxTmdbFetchPerRequestInt, err := strconv.Atoi(maxTmdbFetchPerRequestStr)
 		if err != nil {
 			return nil, errors.New("MAX_TMDB_FETCH_PER_REQUEST is not a valid integer")
 		}
-		maxTMDBFetchPerRequest = maxTMDBFetchPerRequestInt
+		maxTmdbFetchPerRequest = maxTmdbFetchPerRequestInt
+	}
+
+	otelEnabled := os.Getenv("OTEL_ENABLED") == "true"
+	otelEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+	otelHeaders := os.Getenv("OTEL_EXPORTER_OTLP_HEADERS")
+
+	if otelEnabled && (otelEndpoint == "" || otelHeaders == "") {
+		log.Warn().Msg("OTEL_ENABLED is true but OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_HEADERS is not set, disabling metrics")
+		otelEnabled = false
 	}
 
 	return &Config{
@@ -93,6 +103,7 @@ func Load() (*Config, error) {
 		TmdbAccessToken:        tmdbAccessToken,
 		MiniMovieUiSecret:      miniMovieUiSecret,
 		DatabaseURL:            databaseURL,
-		MaxTMDBFetchPerRequest: maxTMDBFetchPerRequest,
+		MaxTmdbFetchPerRequest: maxTmdbFetchPerRequest,
+		OTelEnabled:            otelEnabled,
 	}, nil
 }
