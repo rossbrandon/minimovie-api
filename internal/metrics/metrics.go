@@ -150,10 +150,11 @@ func (m *Metrics) RecordHttpRequest(ctx context.Context, method, endpoint string
 	))
 }
 
-func (m *Metrics) RecordTmdbRequest(ctx context.Context, endpoint, status string, duration time.Duration) {
+func (m *Metrics) RecordTmdbRequest(ctx context.Context, endpoint, status string, status_code int, duration time.Duration) {
 	attrs := []attribute.KeyValue{
 		attribute.String("endpoint", endpoint),
 		attribute.String("status", status),
+		attribute.Int("status_code", status_code),
 	}
 	m.TmdbRequestsTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
 	m.TmdbRequestDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(

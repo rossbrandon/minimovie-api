@@ -59,7 +59,7 @@ func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 	res, err := c.httpClient.Do(req)
 	if err != nil {
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, time.Since(start))
 		}
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
@@ -68,27 +68,27 @@ func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 	switch {
 	case res.StatusCode == http.StatusOK:
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "success", time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "success", res.StatusCode, time.Since(start))
 		}
 	case res.StatusCode == http.StatusNotFound:
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "not_found", time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "not_found", res.StatusCode, time.Since(start))
 		}
 		return nil, ErrNotFound
 	case res.StatusCode == http.StatusTooManyRequests:
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "rate_limited", time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "rate_limited", res.StatusCode, time.Since(start))
 		}
 		log.Warn().Msg("rate limited by TMDB: retry-after " + res.Header.Get("Retry-After"))
 		return nil, ErrRateLimited
 	case res.StatusCode >= 500:
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "server_error", time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, time.Since(start))
 		}
 		return nil, ErrServerError
 	default:
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, time.Since(start))
 		}
 		return nil, fmt.Errorf("unexpected status: %d", res.StatusCode)
 	}

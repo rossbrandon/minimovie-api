@@ -181,6 +181,12 @@ TMDB API calls are limited per request to avoid N+1 problems. When fetching is r
 
 ## Deployment
 
+### Observability
+
+- [Grafana Dashboard](https://rossbrandon.grafana.net/d/rofg2q7/minimovie-api-service-metrics?orgId=1&from=now-30m&to=now&timezone=browser)
+- [Railway Dashboard](https://railway.com/project/fff7464f-52c9-4e91-b358-632b1e4202fb/observability?environmentId=9f32b1f7-f66e-4146-9982-1ec9aef6f573)
+- [Railway Logs](https://railway.com/project/fff7464f-52c9-4e91-b358-632b1e4202fb/logs?environmentId=9f32b1f7-f66e-4146-9982-1ec9aef6f573)
+
 ### Cloudflare
 
 #### API Allowlist
