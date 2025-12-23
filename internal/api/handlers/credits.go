@@ -1,13 +1,20 @@
 package handlers
 
-import "github.com/rossbrandon/minimovie-api/internal/tmdb"
+import (
+	"context"
+
+	"github.com/rossbrandon/minimovie-api/internal/age"
+	"github.com/rossbrandon/minimovie-api/internal/tmdb"
+)
 
 type Person struct {
-	ID       int    `json:"id"`
-	Name     string `json:"name"`
-	PhotoURL string `json:"photoUrl,omitempty"`
-	Role     string `json:"role,omitempty"`
-	Order    int    `json:"order,omitempty"`
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	PhotoURL     string `json:"photoUrl,omitempty"`
+	Role         string `json:"role,omitempty"`
+	Order        int    `json:"order,omitempty"`
+	AgeAtRelease *int   `json:"ageAtRelease,omitempty"`
+	AgeRange     string `json:"ageRange,omitempty"`
 }
 
 type Credits struct {
@@ -135,5 +142,119 @@ func buildAggregateCredits(credits tmdb.AggregateCredits) *Credits {
 		ProductionDesign: crew.ProductionDesign,
 		CostumeDesign:    crew.CostumeDesign,
 		Casting:          crew.Casting,
+	}
+}
+
+// collectPeopleForEnrichment gathers all people from credits in priority order for birthday enrichment.
+// The sliding window in the resolver will fetch them gradually over multiple requests.
+func collectPeopleForEnrichment(credits *Credits) []age.PersonRef {
+	if credits == nil {
+		return nil
+	}
+
+	var refs []age.PersonRef
+
+	// Priority 1: Directors
+	for _, p := range credits.Directors {
+		refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: age.PriorityDirector})
+	}
+
+	// Priority 2: Writers
+	for _, p := range credits.Writers {
+		refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: age.PriorityWriter})
+	}
+
+	// Priority 3-4: Cast (top 10 = priority 3, rest = priority 4)
+	for i, p := range credits.Cast {
+		priority := age.PriorityTopCast
+		if i >= 10 {
+			priority = age.PriorityCast
+		}
+		refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: priority})
+	}
+
+	// Priority 5: Other crew
+	addCrew := func(people []Person) {
+		for _, p := range people {
+			refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: age.PriorityCrew})
+		}
+	}
+	addCrew(credits.Producers)
+	addCrew(credits.Composers)
+	addCrew(credits.Cinematographers)
+	addCrew(credits.Editors)
+	addCrew(credits.ProductionDesign)
+	addCrew(credits.CostumeDesign)
+	addCrew(credits.Casting)
+
+	return refs
+}
+
+// enrichCreditsWithAges adds age data to credits using the age resolver.
+// For single-date content (movies, episodes), pass the same date for both start and end.
+// For date-range content (series), pass different dates to get age ranges.
+func (h *Handlers) enrichCreditsWithAges(ctx context.Context, credits *Credits, startDate, endDate string) {
+	if credits == nil || h.ageResolver == nil {
+		return
+	}
+
+	people := collectPeopleForEnrichment(credits)
+	if len(people) == 0 {
+		return
+	}
+
+	birthdays := h.ageResolver.Resolve(ctx, people)
+	useRange := endDate != "" && endDate != startDate
+	applyAges := func(persons []Person) {
+		for i := range persons {
+			dates, ok := birthdays[persons[i].ID]
+			if !ok || dates.DateOfBirth == "" {
+				continue
+			}
+
+			if useRange {
+				persons[i].AgeRange = age.CalculateAgeRange(dates.DateOfBirth, startDate, endDate)
+			} else {
+				persons[i].AgeAtRelease = age.CalculateAge(dates.DateOfBirth, startDate)
+			}
+		}
+	}
+
+	applyAges(credits.Cast)
+	applyAges(credits.Directors)
+	applyAges(credits.Writers)
+	applyAges(credits.Producers)
+	applyAges(credits.Composers)
+	applyAges(credits.Cinematographers)
+	applyAges(credits.Editors)
+	applyAges(credits.ProductionDesign)
+	applyAges(credits.CostumeDesign)
+	applyAges(credits.Casting)
+}
+
+func (h *Handlers) enrichGuestStarsWithAges(ctx context.Context, guestStars []Person, airDate string) {
+	if len(guestStars) == 0 || h.ageResolver == nil {
+		return
+	}
+
+	var people []age.PersonRef
+	for i, p := range guestStars {
+		if i >= 25 {
+			break
+		}
+		priority := age.PriorityTopCast
+		if i >= 10 {
+			priority = age.PriorityCast
+		}
+		people = append(people, age.PersonRef{ID: p.ID, Name: p.Name, Priority: priority})
+	}
+
+	birthdays := h.ageResolver.Resolve(ctx, people)
+	for i := range guestStars {
+		dates, ok := birthdays[guestStars[i].ID]
+		if !ok || dates.DateOfBirth == "" {
+			continue
+		}
+		guestStars[i].AgeAtRelease = age.CalculateAge(dates.DateOfBirth, airDate)
 	}
 }

@@ -62,7 +62,10 @@ func (h *Handlers) GetSeason(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, toSeasonDetails(season))
+	details := toSeasonDetails(season)
+	h.enrichCreditsWithAges(r.Context(), details.Credits, season.AirDate, season.AirDate)
+
+	httputil.JSON(w, http.StatusOK, details)
 }
 
 func toSeasonDetails(season *tmdb.SeasonDetails) *SeasonDetails {

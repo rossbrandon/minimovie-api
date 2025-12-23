@@ -75,7 +75,10 @@ func (h *Handlers) GetSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, toSeriesDetails(series))
+	details := toSeriesDetails(series)
+	h.enrichCreditsWithAges(r.Context(), details.Credits, series.FirstAirDate, series.LastAirDate)
+
+	httputil.JSON(w, http.StatusOK, details)
 }
 
 func toSeriesDetails(series *tmdb.Series) *SeriesDetails {

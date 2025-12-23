@@ -53,7 +53,10 @@ func (h *Handlers) GetMovie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, toMovieDetails(movie))
+	details := toMovieDetails(movie)
+	h.enrichCreditsWithAges(r.Context(), details.Credits, movie.ReleaseDate, movie.ReleaseDate)
+
+	httputil.JSON(w, http.StatusOK, details)
 }
 
 func toMovieDetails(movie *tmdb.Movie) *MovieDetails {

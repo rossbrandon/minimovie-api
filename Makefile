@@ -1,4 +1,4 @@
-.PHONY: start watch build fmt
+.PHONY: start watch build fmt local-up local-down
 
 start:
 	@set -a && source .env && go run cmd/api/main.go
@@ -11,4 +11,10 @@ build:
 
 fmt:
 	go fmt ./...
+
+local-up:
+	docker compose -f local-development/docker-compose.yml up -d
+
+local-down:
+	docker compose -f local-development/docker-compose.yml down
 

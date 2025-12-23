@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/rossbrandon/minimovie-api/config"
+	"github.com/rossbrandon/minimovie-api/internal/age"
 	"github.com/rossbrandon/minimovie-api/internal/api"
 	"github.com/rossbrandon/minimovie-api/internal/api/handlers"
+	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -16,23 +19,39 @@ func main() {
 
 	log.Info().Msg("Starting MiniMovie API")
 
-	config, err := config.Load()
+	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load config")
 	}
 
+	ctx := context.Background()
+
+	pool, err := store.NewPool(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to connect to database")
+	}
+	defer pool.Close()
+
+	personStore := store.NewPersonStore(pool)
+
 	tmdbClient := tmdb.NewClient(tmdb.Config{
-		BaseURL:     config.TmdbBaseUrl,
-		Timeout:     config.TmdbTimeout,
-		AccessToken: config.TmdbAccessToken,
+		BaseURL:     cfg.TmdbBaseUrl,
+		Timeout:     cfg.TmdbTimeout,
+		AccessToken: cfg.TmdbAccessToken,
 	})
 
-	handlers := handlers.NewHandlers(tmdbClient)
-
-	r := api.NewRouter(handlers, config)
-	log.Info().Msg("Server is listening on port " + config.Port)
-	err = http.ListenAndServe(":"+config.Port, r)
+	ageResolver, err := age.New(ctx, personStore, tmdbClient, age.Config{
+		MaxFetchPerRequest: cfg.MaxTMDBFetchPerRequest,
+	})
 	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to create age resolver")
+	}
+
+	h := handlers.NewHandlers(tmdbClient, ageResolver)
+
+	r := api.NewRouter(h, cfg)
+	log.Info().Msg("Server is listening on port " + cfg.Port)
+	if err := http.ListenAndServe(":"+cfg.Port, r); err != nil {
 		log.Fatal().Err(err).Msg("Failed to start server")
 	}
 }

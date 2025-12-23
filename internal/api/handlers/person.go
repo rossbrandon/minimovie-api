@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
@@ -13,19 +15,20 @@ import (
 )
 
 type PersonDetails struct {
-	ID           int          `json:"id"`
-	ImdbID       string       `json:"imdbId"`
-	Name         string       `json:"name"`
-	Biography    string       `json:"biography"`
-	Birthday     string       `json:"birthday,omitempty"`
-	Deathday     string       `json:"deathday,omitempty"`
-	Gender       string       `json:"gender"`
-	PlaceOfBirth string       `json:"placeOfBirth,omitempty"`
-	PhotoURL     string       `json:"photoUrl"`
-	KnownFor     string       `json:"knownFor"`
-	AlsoKnownAs  []string     `json:"alsoKnownAs,omitempty"`
-	MovieCredits []FilmCredit `json:"movieCredits,omitempty"`
-	TVCredits    []FilmCredit `json:"tvCredits,omitempty"`
+	ID            int          `json:"id"`
+	ImdbID        string       `json:"imdbId"`
+	Name          string       `json:"name"`
+	Biography     string       `json:"biography"`
+	Birthday      string       `json:"birthday,omitempty"`
+	Deathday      string       `json:"deathday,omitempty"`
+	CurrentAge    *int         `json:"currentAge,omitempty"`
+	Gender        string       `json:"gender"`
+	PlaceOfBirth  string       `json:"placeOfBirth,omitempty"`
+	PhotoURL      string       `json:"photoUrl"`
+	KnownFor      string       `json:"knownFor"`
+	AlsoKnownAs   []string     `json:"alsoKnownAs,omitempty"`
+	MovieCredits  []FilmCredit `json:"movieCredits,omitempty"`
+	SeriesCredits []FilmCredit `json:"seriesCredits,omitempty"`
 }
 
 type FilmCredit struct {
@@ -65,21 +68,46 @@ func toPersonDetails(person *tmdb.Person) *PersonDetails {
 		deathday = *person.Deathday
 	}
 
-	return &PersonDetails{
-		ID:           person.ID,
-		ImdbID:       person.ImdbID,
-		Name:         person.Name,
-		Biography:    person.Biography,
-		Birthday:     person.Birthday,
-		Deathday:     deathday,
-		Gender:       genderToString(person.Gender),
-		PlaceOfBirth: person.PlaceOfBirth,
-		PhotoURL:     buildImageURL(person.ProfilePath, "w92"),
-		KnownFor:     person.KnownForDepartment,
-		AlsoKnownAs:  person.AlsoKnownAs,
-		MovieCredits: buildFilmCredits(person.CombinedCredits, "movie"),
-		TVCredits:    buildFilmCredits(person.CombinedCredits, "tv"),
+	currentAge, err := currentAge(person.Birthday, deathday)
+	// Log and ignore this error so we don't break the API on bad data
+	if err != nil {
+		log.Error().Err(err).Str("birthday", person.Birthday).Str("deathday", deathday).Msg("failed to calculate current age")
 	}
+
+	return &PersonDetails{
+		ID:            person.ID,
+		ImdbID:        person.ImdbID,
+		Name:          person.Name,
+		Biography:     person.Biography,
+		Birthday:      person.Birthday,
+		Deathday:      deathday,
+		CurrentAge:    currentAge,
+		Gender:        genderToString(person.Gender),
+		PlaceOfBirth:  person.PlaceOfBirth,
+		PhotoURL:      buildImageURL(person.ProfilePath, "w92"),
+		KnownFor:      person.KnownForDepartment,
+		AlsoKnownAs:   person.AlsoKnownAs,
+		MovieCredits:  buildFilmCredits(person.CombinedCredits, tmdb.MediaTypeMovie),
+		SeriesCredits: buildFilmCredits(person.CombinedCredits, tmdb.MediaTypeTV),
+	}
+}
+
+func currentAge(birthday string, deathday string) (*int, error) {
+	birthDate, err := time.Parse(time.DateOnly, birthday)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse birthday: %w", err)
+	}
+
+	endDate := time.Now()
+	if deathday != "" {
+		endDate, err = time.Parse(time.DateOnly, deathday)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse deathday: %w", err)
+		}
+	}
+
+	age := endDate.Year() - birthDate.Year()
+	return &age, nil
 }
 
 func genderToString(gender int) string {
@@ -95,16 +123,14 @@ func genderToString(gender int) string {
 	}
 }
 
-func buildFilmCredits(credits tmdb.CombinedCredits, mediaType string) []FilmCredit {
-	seen := make(map[int]bool)
+func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []FilmCredit {
 	var result []FilmCredit
 
 	// Add cast credits
 	for _, c := range credits.Cast {
-		if c.MediaType != mediaType || seen[c.ID] {
+		if c.MediaType != string(mediaType) {
 			continue
 		}
-		seen[c.ID] = true
 		result = append(result, FilmCredit{
 			ID:          c.ID,
 			Title:       creditTitle(c.CombinedCreditBase, mediaType),
@@ -115,12 +141,11 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType string) []FilmCred
 		})
 	}
 
-	// Add crew credits (only if not already present as cast)
+	// Add crew credits
 	for _, c := range credits.Crew {
-		if c.MediaType != mediaType || seen[c.ID] {
+		if c.MediaType != string(mediaType) {
 			continue
 		}
-		seen[c.ID] = true
 		result = append(result, FilmCredit{
 			ID:          c.ID,
 			Title:       creditTitle(c.CombinedCreditBase, mediaType),
@@ -139,15 +164,15 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType string) []FilmCred
 	return result
 }
 
-func creditTitle(base tmdb.CombinedCreditBase, mediaType string) string {
-	if mediaType == "movie" {
+func creditTitle(base tmdb.CombinedCreditBase, mediaType tmdb.MediaType) string {
+	if mediaType == tmdb.MediaTypeMovie {
 		return base.Title
 	}
 	return base.Name
 }
 
-func creditDate(base tmdb.CombinedCreditBase, mediaType string) string {
-	if mediaType == "movie" {
+func creditDate(base tmdb.CombinedCreditBase, mediaType tmdb.MediaType) string {
+	if mediaType == tmdb.MediaTypeMovie {
 		return base.ReleaseDate
 	}
 	return base.FirstAirDate

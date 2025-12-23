@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 var (
@@ -62,6 +64,7 @@ func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 	case res.StatusCode == http.StatusNotFound:
 		return nil, ErrNotFound
 	case res.StatusCode == http.StatusTooManyRequests:
+		log.Warn().Msg("rate limited by TMDB: retry-after " + res.Header.Get("Retry-After"))
 		return nil, ErrRateLimited
 	case res.StatusCode >= 500:
 		return nil, ErrServerError

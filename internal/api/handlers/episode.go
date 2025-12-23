@@ -59,7 +59,11 @@ func (h *Handlers) GetEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, toEpisodeDetails(episode))
+	details := toEpisodeDetails(episode)
+	h.enrichCreditsWithAges(r.Context(), details.Credits, episode.AirDate, episode.AirDate)
+	h.enrichGuestStarsWithAges(r.Context(), details.GuestStars, episode.AirDate)
+
+	httputil.JSON(w, http.StatusOK, details)
 }
 
 func toEpisodeDetails(episode *tmdb.EpisodeDetails) *EpisodeDetails {
