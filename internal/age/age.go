@@ -12,12 +12,12 @@ func CalculateAge(birthday, date string) *int {
 		return nil
 	}
 
-	bday, err := time.Parse("2006-01-02", birthday)
+	bday, err := time.Parse(time.DateOnly, birthday)
 	if err != nil {
 		return nil
 	}
 
-	d, err := time.Parse("2006-01-02", date)
+	d, err := time.Parse(time.DateOnly, date)
 	if err != nil {
 		return nil
 	}

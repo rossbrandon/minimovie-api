@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -19,7 +20,7 @@ type BigCacheAdapter struct {
 func NewBigCacheAdapter(ctx context.Context) (*BigCacheAdapter, error) {
 	config := bigcache.Config{
 		Shards:             256,
-		LifeWindow:         24 * time.Hour,
+		LifeWindow:         time.Duration(math.MaxInt32) * time.Second, // don't expire cache
 		CleanWindow:        1 * time.Hour,
 		MaxEntriesInWindow: 1000000,
 		MaxEntrySize:       50,

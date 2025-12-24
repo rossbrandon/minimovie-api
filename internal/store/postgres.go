@@ -58,9 +58,9 @@ func (s *PersonStore) GetPeople(ctx context.Context, personIDs []int) (map[int]P
 	defer metrics.TrackDbDuration(ctx, "read")()
 
 	query := `
-		SELECT id, date_of_birth, date_of_death, popularity, fetched
-		FROM people
-		WHERE id = ANY($1)
+		select id, date_of_birth, date_of_death, popularity, fetched
+		from people
+		where id = any($1)
 	`
 
 	rows, err := s.pool.Query(ctx, query, personIDs)
@@ -82,10 +82,10 @@ func (s *PersonStore) GetPeople(ctx context.Context, personIDs []int) (map[int]P
 
 		dates := PersonDates{Fetched: fetched, Popularity: popularity}
 		if dob.Valid {
-			dates.DateOfBirth = dob.Time.Format("2006-01-02")
+			dates.DateOfBirth = dob.Time.Format(time.DateOnly)
 		}
 		if dod.Valid {
-			dates.DateOfDeath = dod.Time.Format("2006-01-02")
+			dates.DateOfDeath = dod.Time.Format(time.DateOnly)
 		}
 		result[id] = dates
 	}
@@ -106,14 +106,14 @@ func (s *PersonStore) UpsertPersonBatch(ctx context.Context, people map[int]Pers
 
 	batch := &pgx.Batch{}
 	query := `
-		INSERT INTO people (id, name, date_of_birth, date_of_death, fetched, updated_at)
-		VALUES ($1, $2, $3, $4, $5, NOW())
-		ON CONFLICT (id) DO UPDATE SET
-			name = COALESCE(EXCLUDED.name, people.name),
-			date_of_birth = EXCLUDED.date_of_birth,
-			date_of_death = EXCLUDED.date_of_death,
-			fetched = EXCLUDED.fetched,
-			updated_at = NOW()
+		insert into people (id, name, date_of_birth, date_of_death, fetched, updated_at)
+		values ($1, $2, $3, $4, $5, now())
+		on conflict (id) do update set
+			name = coalesce(excluded.name, people.name),
+			date_of_birth = excluded.date_of_birth,
+			date_of_death = excluded.date_of_death,
+			fetched = excluded.fetched,
+			updated_at = now()
 	`
 
 	for id, dates := range people {

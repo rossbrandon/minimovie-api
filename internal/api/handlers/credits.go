@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"time"
 
 	"github.com/rossbrandon/minimovie-api/internal/age"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
@@ -13,6 +14,9 @@ type Person struct {
 	PhotoURL     string `json:"photoUrl,omitempty"`
 	Role         string `json:"role,omitempty"`
 	Order        int    `json:"order,omitempty"`
+	Birthday     string `json:"birthday,omitempty"`
+	Deathday     string `json:"deathday,omitempty"`
+	CurrentAge   *int   `json:"currentAge,omitempty"`
 	AgeAtRelease *int   `json:"ageAtRelease,omitempty"`
 	AgeRange     string `json:"ageRange,omitempty"`
 }
@@ -211,6 +215,10 @@ func (h *Handlers) enrichCreditsWithAges(ctx context.Context, credits *Credits, 
 			if !ok || dates.DateOfBirth == "" {
 				continue
 			}
+
+			persons[i].Birthday = dates.DateOfBirth
+			persons[i].Deathday = dates.DateOfDeath
+			persons[i].CurrentAge = age.CalculateAge(dates.DateOfBirth, time.Now().Format(time.DateOnly))
 
 			if useRange {
 				persons[i].AgeRange = age.CalculateAgeRange(dates.DateOfBirth, startDate, endDate)
