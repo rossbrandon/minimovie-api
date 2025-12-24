@@ -24,6 +24,7 @@ type MovieDetails struct {
 	Runtime             int           `json:"runtime"`
 	Budget              int           `json:"budget"`
 	Revenue             int           `json:"revenue"`
+	VoteAverage         float64       `json:"voteAverage"`
 	OriginalTitle       string        `json:"originalTitle"`
 	OriginalLanguage    string        `json:"originalLanguage"`
 	OriginCountry       string        `json:"originCountry"`
@@ -98,6 +99,7 @@ func toMovieDetails(movie *tmdb.Movie) *MovieDetails {
 		Runtime:             movie.Runtime,
 		Budget:              movie.Budget,
 		Revenue:             movie.Revenue,
+		VoteAverage:         movie.VoteAverage,
 		OriginalTitle:       movie.OriginalTitle,
 		OriginalLanguage:    movie.OriginalLanguage,
 		OriginCountry:       originCountry,

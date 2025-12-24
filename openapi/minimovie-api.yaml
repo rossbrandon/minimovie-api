@@ -1,0 +1,804 @@
+openapi: 3.0.3
+info:
+  title: MiniMovie API
+  description: API for retrieving intuitive movie, TV series, and person information
+  version: 1.0.0
+
+servers:
+  - url: https://api.minimovie.info
+    description: Production server
+
+security:
+  - bearerAuth: []
+
+paths:
+  /ping:
+    get:
+      summary: Health check
+      description: Returns a simple pong response to verify the API is running
+      operationId: ping
+      security: []
+      responses:
+        "200":
+          description: Successful response
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: pong
+
+  /search:
+    get:
+      summary: Search movies, series, and people
+      description: Search across movies, TV series, and people or filter by media type
+      operationId: search
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query string
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          description: Page number for pagination (defaults to 1)
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: type
+          in: query
+          required: false
+          description: Filter by media type
+          schema:
+            type: string
+            enum:
+              - all
+              - movie
+              - series
+              - person
+      responses:
+        "200":
+          description: Successful search results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "400":
+          description: Bad request (missing query parameter or invalid type)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /movies/{id}:
+    get:
+      summary: Get movie details
+      description: Retrieve detailed information about a movie including credits and streaming availability
+      operationId: getMovie
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: TMDB movie ID
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Movie details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MovieDetails"
+        "400":
+          description: Invalid movie ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Movie not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /series/{id}:
+    get:
+      summary: Get TV series details
+      description: Retrieve detailed information about a TV series including seasons, credits, and streaming availability
+      operationId: getSeries
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: TMDB series ID
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Series details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeriesDetails"
+        "400":
+          description: Invalid series ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Series not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /series/{seriesId}/seasons/{seasonNumber}:
+    get:
+      summary: Get season details
+      description: Retrieve detailed information about a TV season including episodes and credits
+      operationId: getSeason
+      parameters:
+        - name: seriesId
+          in: path
+          required: true
+          description: TMDB series ID
+          schema:
+            type: integer
+        - name: seasonNumber
+          in: path
+          required: true
+          description: Season number
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Season details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeasonDetails"
+        "400":
+          description: Invalid series ID or season number
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Season not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /series/{seriesId}/seasons/{seasonNumber}/episodes/{episodeNumber}:
+    get:
+      summary: Get episode details
+      description: Retrieve detailed information about a TV episode including guest stars and credits
+      operationId: getEpisode
+      parameters:
+        - name: seriesId
+          in: path
+          required: true
+          description: TMDB series ID
+          schema:
+            type: integer
+        - name: seasonNumber
+          in: path
+          required: true
+          description: Season number
+          schema:
+            type: integer
+        - name: episodeNumber
+          in: path
+          required: true
+          description: Episode number
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Episode details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EpisodeDetails"
+        "400":
+          description: Invalid series ID, season number, or episode number
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Episode not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /people/{id}:
+    get:
+      summary: Get person details
+      description: Retrieve detailed information about a person including their filmography
+      operationId: getPerson
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: TMDB person ID
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Person details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonDetails"
+        "400":
+          description: Invalid person ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Person not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: HTTP status text
+        message:
+          type: string
+          description: Detailed error message
+
+    SearchResponse:
+      type: object
+      properties:
+        page:
+          type: integer
+        totalPages:
+          type: integer
+        totalResults:
+          type: integer
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchResult"
+
+    SearchResult:
+      type: object
+      properties:
+        id:
+          type: integer
+        mediaType:
+          type: string
+          enum:
+            - movie
+            - series
+            - person
+        title:
+          type: string
+        overview:
+          type: string
+        posterUrl:
+          type: string
+        releaseDate:
+          type: string
+          format: date
+        knownFor:
+          type: string
+          description: Department the person is known for (only for person results)
+
+    MovieDetails:
+      type: object
+      properties:
+        id:
+          type: integer
+        imdbID:
+          type: string
+        title:
+          type: string
+        tagline:
+          type: string
+        overview:
+          type: string
+        genres:
+          type: array
+          items:
+            type: string
+        posterUrl:
+          type: string
+        status:
+          type: string
+        releaseDate:
+          type: string
+          format: date
+        runtime:
+          type: integer
+          description: Runtime in minutes
+        budget:
+          type: integer
+        revenue:
+          type: integer
+        voteAverage:
+          type: number
+          format: float
+        originalTitle:
+          type: string
+        originalLanguage:
+          type: string
+        originCountry:
+          type: string
+        spokenLanguages:
+          type: array
+          items:
+            type: string
+        productionCompanies:
+          type: array
+          items:
+            type: string
+        productionCountries:
+          type: array
+          items:
+            type: string
+        whereToWatch:
+          $ref: "#/components/schemas/WhereToWatch"
+        credits:
+          $ref: "#/components/schemas/Credits"
+
+    SeriesDetails:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        tagline:
+          type: string
+        overview:
+          type: string
+        genres:
+          type: array
+          items:
+            type: string
+        posterUrl:
+          type: string
+        status:
+          type: string
+        inProduction:
+          type: boolean
+        firstAirDate:
+          type: string
+          format: date
+        lastAirDate:
+          type: string
+          format: date
+        numberOfSeasons:
+          type: integer
+        numberOfEpisodes:
+          type: integer
+        episodeRunTime:
+          type: array
+          items:
+            type: integer
+          description: Episode run times in minutes
+        voteAverage:
+          type: number
+          format: float
+        originalName:
+          type: string
+        originalLanguage:
+          type: string
+        originCountry:
+          type: string
+        spokenLanguages:
+          type: array
+          items:
+            type: string
+        productionCompanies:
+          type: array
+          items:
+            type: string
+        productionCountries:
+          type: array
+          items:
+            type: string
+        createdBy:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        networks:
+          type: array
+          items:
+            $ref: "#/components/schemas/Network"
+        seasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/Season"
+        whereToWatch:
+          $ref: "#/components/schemas/WhereToWatch"
+        credits:
+          $ref: "#/components/schemas/Credits"
+
+    SeasonDetails:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        overview:
+          type: string
+        posterUrl:
+          type: string
+        seasonNumber:
+          type: integer
+        airDate:
+          type: string
+          format: date
+        voteAverage:
+          type: number
+          format: float
+        episodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/EpisodeSummary"
+        whereToWatch:
+          $ref: "#/components/schemas/WhereToWatch"
+        credits:
+          $ref: "#/components/schemas/Credits"
+
+    EpisodeSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        overview:
+          type: string
+        episodeNumber:
+          type: integer
+        seasonNumber:
+          type: integer
+        airDate:
+          type: string
+          format: date
+        runtime:
+          type: integer
+          description: Runtime in minutes
+        stillUrl:
+          type: string
+        voteAverage:
+          type: number
+          format: float
+
+    EpisodeDetails:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        overview:
+          type: string
+        episodeNumber:
+          type: integer
+        seasonNumber:
+          type: integer
+        airDate:
+          type: string
+          format: date
+        runtime:
+          type: integer
+          description: Runtime in minutes
+        stillUrl:
+          type: string
+        voteAverage:
+          type: number
+          format: float
+        voteCount:
+          type: integer
+        guestStars:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        credits:
+          $ref: "#/components/schemas/Credits"
+
+    PersonDetails:
+      type: object
+      properties:
+        id:
+          type: integer
+        imdbId:
+          type: string
+        name:
+          type: string
+        biography:
+          type: string
+        birthday:
+          type: string
+          format: date
+        deathday:
+          type: string
+          format: date
+        currentAge:
+          type: integer
+        gender:
+          type: string
+          enum:
+            - Female
+            - Male
+            - Non-binary
+            - Not specified
+        placeOfBirth:
+          type: string
+        photoUrl:
+          type: string
+        knownFor:
+          type: string
+          description: Department the person is known for
+        alsoKnownAs:
+          type: array
+          items:
+            type: string
+        movieCredits:
+          type: array
+          items:
+            $ref: "#/components/schemas/FilmCredit"
+        seriesCredits:
+          type: array
+          items:
+            $ref: "#/components/schemas/FilmCredit"
+
+    FilmCredit:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        posterUrl:
+          type: string
+        releaseDate:
+          type: string
+          format: date
+        role:
+          type: string
+          description: Character name (for cast) or job title (for crew)
+        type:
+          type: string
+          enum:
+            - cast
+            - crew
+
+    Person:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        photoUrl:
+          type: string
+        role:
+          type: string
+          description: Character name or job title
+        order:
+          type: integer
+          description: Billing order (for cast)
+        birthday:
+          type: string
+          format: date
+        deathday:
+          type: string
+          format: date
+        currentAge:
+          type: integer
+          description: Current age of the person (if alive)
+        ageAtRelease:
+          type: integer
+          description: Age of the person at the time of release
+        ageRange:
+          type: string
+          description: Age range during production (for series spanning multiple years)
+
+    Network:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        logoUrl:
+          type: string
+        originCountry:
+          type: string
+
+    Season:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        overview:
+          type: string
+        seasonNumber:
+          type: integer
+        episodeCount:
+          type: integer
+        airDate:
+          type: string
+          format: date
+        posterUrl:
+          type: string
+        voteAverage:
+          type: number
+          format: float
+
+    WhereToWatch:
+      type: object
+      properties:
+        stream:
+          type: array
+          items:
+            $ref: "#/components/schemas/WatchProvider"
+        rent:
+          type: array
+          items:
+            $ref: "#/components/schemas/WatchProvider"
+        buy:
+          type: array
+          items:
+            $ref: "#/components/schemas/WatchProvider"
+        free:
+          type: array
+          items:
+            $ref: "#/components/schemas/WatchProvider"
+        ads:
+          type: array
+          items:
+            $ref: "#/components/schemas/WatchProvider"
+
+    WatchProvider:
+      type: object
+      properties:
+        name:
+          type: string
+        logoUrl:
+          type: string
+
+    Credits:
+      type: object
+      properties:
+        cast:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        directors:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        writers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        producers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        composers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        cinematographers:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        editors:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        productionDesign:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        costumeDesign:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        casting:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"

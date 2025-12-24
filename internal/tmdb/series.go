@@ -22,6 +22,7 @@ type Series struct {
 	NumberOfSeasons     int                 `json:"number_of_seasons"`
 	NumberOfEpisodes    int                 `json:"number_of_episodes"`
 	EpisodeRunTime      []int               `json:"episode_run_time"`
+	VoteAverage         float64             `json:"vote_average"`
 	OriginalName        string              `json:"original_name"`
 	OriginalLanguage    string              `json:"original_language"`
 	OriginCountry       []string            `json:"origin_country"`

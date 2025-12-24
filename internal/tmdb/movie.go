@@ -21,6 +21,7 @@ type Movie struct {
 	Runtime             int                 `json:"runtime"`
 	Budget              int                 `json:"budget"`
 	Revenue             int                 `json:"revenue"`
+	VoteAverage         float64             `json:"vote_average"`
 	OriginalTitle       string              `json:"original_title"`
 	OriginalLanguage    string              `json:"original_language"`
 	OriginCountry       []string            `json:"origin_country"`

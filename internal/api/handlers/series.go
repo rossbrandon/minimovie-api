@@ -25,6 +25,7 @@ type SeriesDetails struct {
 	NumberOfSeasons     int           `json:"numberOfSeasons"`
 	NumberOfEpisodes    int           `json:"numberOfEpisodes"`
 	EpisodeRunTime      []int         `json:"episodeRunTime"`
+	VoteAverage         float64       `json:"voteAverage"`
 	OriginalName        string        `json:"originalName"`
 	OriginalLanguage    string        `json:"originalLanguage"`
 	OriginCountry       string        `json:"originCountry"`
@@ -158,6 +159,7 @@ func toSeriesDetails(series *tmdb.Series) *SeriesDetails {
 		NumberOfSeasons:     series.NumberOfSeasons,
 		NumberOfEpisodes:    series.NumberOfEpisodes,
 		EpisodeRunTime:      series.EpisodeRunTime,
+		VoteAverage:         series.VoteAverage,
 		OriginalName:        series.OriginalName,
 		OriginalLanguage:    series.OriginalLanguage,
 		OriginCountry:       originCountry,
