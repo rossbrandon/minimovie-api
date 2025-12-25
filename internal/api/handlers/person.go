@@ -32,12 +32,14 @@ type PersonDetails struct {
 }
 
 type FilmCredit struct {
-	ID          int    `json:"id"`
-	Title       string `json:"title"`
-	PosterURL   string `json:"posterUrl,omitempty"`
-	ReleaseDate string `json:"releaseDate,omitempty"`
-	Role        string `json:"role"`
-	Type        string `json:"type"` // "cast" or "crew"
+	ID          int     `json:"id"`
+	Title       string  `json:"title"`
+	PosterURL   string  `json:"posterUrl,omitempty"`
+	ReleaseDate string  `json:"releaseDate,omitempty"`
+	Role        string  `json:"role"`
+	Order       *int    `json:"order,omitempty"`
+	Popularity  float64 `json:"popularity"`
+	Type        string  `json:"type"` // "cast" or "crew"
 }
 
 func (h *Handlers) GetPerson(w http.ResponseWriter, r *http.Request) {
@@ -137,6 +139,8 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []
 			PosterURL:   buildImageURL(c.PosterPath, "w92"),
 			ReleaseDate: creditDate(c.CombinedCreditBase, mediaType),
 			Role:        c.Character,
+			Order:       &c.Order,
+			Popularity:  c.Popularity,
 			Type:        "cast",
 		})
 	}
@@ -152,13 +156,14 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []
 			PosterURL:   buildImageURL(c.PosterPath, "w92"),
 			ReleaseDate: creditDate(c.CombinedCreditBase, mediaType),
 			Role:        c.Job,
+			Popularity:  c.Popularity,
 			Type:        "crew",
 		})
 	}
 
-	// Sort by date descending (newest first)
+	// Sort by popularity descending (most popular first)
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].ReleaseDate > result[j].ReleaseDate
+		return result[i].Popularity > result[j].Popularity
 	})
 
 	return result

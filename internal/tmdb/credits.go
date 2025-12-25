@@ -80,13 +80,16 @@ type CombinedCreditBase struct {
 
 type CombinedCastCredit struct {
 	CombinedCreditBase
-	Character    string `json:"character"`
-	EpisodeCount int    `json:"episode_count"`
+	Character    string  `json:"character"`
+	EpisodeCount int     `json:"episode_count"`
+	Order        int     `json:"order"`
+	Popularity   float64 `json:"popularity"`
 }
 
 type CombinedCrewCredit struct {
 	CombinedCreditBase
-	Job          string `json:"job"`
-	Department   string `json:"department"`
-	EpisodeCount int    `json:"episode_count"`
+	Job          string  `json:"job"`
+	Department   string  `json:"department"`
+	EpisodeCount int     `json:"episode_count"`
+	Popularity   float64 `json:"popularity"`
 }

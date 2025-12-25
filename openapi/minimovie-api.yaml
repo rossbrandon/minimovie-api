@@ -656,6 +656,12 @@ components:
         role:
           type: string
           description: Character name (for cast) or job title (for crew)
+        order:
+          type: integer
+          description: Billing order for cast credits (lower = more prominent). Null for crew credits.
+        popularity:
+          type: number
+          description: Popularity score of the film/show. Useful for sorting "Known For" credits.
         type:
           type: string
           enum:
