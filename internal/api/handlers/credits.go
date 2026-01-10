@@ -209,6 +209,7 @@ func (h *Handlers) enrichCreditsWithAges(ctx context.Context, credits *Credits, 
 
 	birthdays := h.ageResolver.Resolve(ctx, people)
 	useRange := endDate != "" && endDate != startDate
+	nowTime := time.Now().Format(time.DateOnly)
 	applyAges := func(persons []Person) {
 		for i := range persons {
 			dates, ok := birthdays[persons[i].ID]
@@ -218,7 +219,7 @@ func (h *Handlers) enrichCreditsWithAges(ctx context.Context, credits *Credits, 
 
 			persons[i].Birthday = dates.DateOfBirth
 			persons[i].Deathday = dates.DateOfDeath
-			persons[i].CurrentAge = age.CalculateAge(dates.DateOfBirth, time.Now().Format(time.DateOnly))
+			persons[i].CurrentAge = age.CalculateAge(dates.DateOfBirth, nowTime)
 
 			if useRange {
 				persons[i].AgeRange = age.CalculateAgeRange(dates.DateOfBirth, startDate, endDate)

@@ -1,9 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/rossbrandon/minimovie-api/internal/age"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog/log"
@@ -32,6 +35,7 @@ type SearchResult struct {
 	PosterURL   string    `json:"posterUrl,omitempty"`
 	ReleaseDate string    `json:"releaseDate,omitempty"`
 	KnownFor    string    `json:"knownFor,omitempty"`
+	Age         int       `json:"age,omitempty"`
 }
 
 func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +77,47 @@ func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	httputil.JSON(w, http.StatusOK, toSearchResponse(results))
+	response := toSearchResponse(results)
+	h.enrichSearchResultsWithAges(r.Context(), response.Results)
+	httputil.JSON(w, http.StatusOK, response)
+}
+
+func (h *Handlers) enrichSearchResultsWithAges(ctx context.Context, results []SearchResult) {
+	if len(results) == 0 || h.ageResolver == nil {
+		return
+	}
+
+	var people []age.PersonRef
+	for _, r := range results {
+		if r.MediaType == MediaTypePerson {
+			people = append(people, age.PersonRef{
+				ID:       r.ID,
+				Name:     r.Title,
+				Priority: age.PriorityCast,
+			})
+		}
+	}
+
+	if len(people) == 0 {
+		return
+	}
+
+	birthdays := h.ageResolver.Resolve(ctx, people)
+	nowTime := time.Now().Format(time.DateOnly)
+	for i := range results {
+		if results[i].MediaType != MediaTypePerson {
+			continue
+		}
+		dates, ok := birthdays[results[i].ID]
+		if !ok || dates.DateOfBirth == "" {
+			continue
+		}
+		if dates.DateOfDeath != "" {
+			results[i].Age = -1
+		} else {
+			results[i].Age = *age.CalculateAge(dates.DateOfBirth, nowTime)
+		}
+	}
 }
 
 func toSearchResponse(results *tmdb.SearchResults) *SearchResponse {

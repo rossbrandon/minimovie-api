@@ -377,6 +377,9 @@ components:
         knownFor:
           type: string
           description: Department the person is known for (only for person results)
+        age:
+          type: integer
+          description: Current age of a person (if known; returns -1 if deceased)
 
     MovieDetails:
       type: object
