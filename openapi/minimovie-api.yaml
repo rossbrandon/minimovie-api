@@ -437,6 +437,42 @@ components:
           $ref: "#/components/schemas/WhereToWatch"
         credits:
           $ref: "#/components/schemas/Credits"
+        collectionInfo:
+          $ref: "#/components/schemas/CollectionInfo"
+
+    CollectionInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        overview:
+          type: string
+        posterUrl:
+          type: string
+        parts:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollectionPart"
+
+    CollectionPart:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        overview:
+          type: string
+        posterUrl:
+          type: string
+        releaseDate:
+          type: string
+          format: date
+        voteAverage:
+          type: number
+          format: float
 
     SeriesDetails:
       type: object

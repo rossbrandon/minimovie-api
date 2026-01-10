@@ -12,27 +12,36 @@ import (
 )
 
 type MovieDetails struct {
-	ID                  int           `json:"id"`
-	ImdbID              string        `json:"imdbID"`
-	Title               string        `json:"title"`
-	Tagline             string        `json:"tagline"`
-	Overview            string        `json:"overview"`
-	Genres              []string      `json:"genres"`
-	PosterURL           string        `json:"posterUrl"`
-	Status              string        `json:"status"`
-	ReleaseDate         string        `json:"releaseDate"`
-	Runtime             int           `json:"runtime"`
-	Budget              int           `json:"budget"`
-	Revenue             int           `json:"revenue"`
-	VoteAverage         float64       `json:"voteAverage"`
-	OriginalTitle       string        `json:"originalTitle"`
-	OriginalLanguage    string        `json:"originalLanguage"`
-	OriginCountry       string        `json:"originCountry"`
-	SpokenLanguages     []string      `json:"spokenLanguages"`
-	ProductionCompanies []string      `json:"productionCompanies"`
-	ProductionCountries []string      `json:"productionCountries"`
-	WhereToWatch        *WhereToWatch `json:"whereToWatch,omitempty"`
-	Credits             *Credits      `json:"credits,omitempty"`
+	ID                  int             `json:"id"`
+	ImdbID              string          `json:"imdbID"`
+	Title               string          `json:"title"`
+	Tagline             string          `json:"tagline"`
+	Overview            string          `json:"overview"`
+	Genres              []string        `json:"genres"`
+	PosterURL           string          `json:"posterUrl"`
+	Status              string          `json:"status"`
+	ReleaseDate         string          `json:"releaseDate"`
+	Runtime             int             `json:"runtime"`
+	Budget              int             `json:"budget"`
+	Revenue             int             `json:"revenue"`
+	VoteAverage         float64         `json:"voteAverage"`
+	OriginalTitle       string          `json:"originalTitle"`
+	OriginalLanguage    string          `json:"originalLanguage"`
+	OriginCountry       string          `json:"originCountry"`
+	SpokenLanguages     []string        `json:"spokenLanguages"`
+	ProductionCompanies []string        `json:"productionCompanies"`
+	ProductionCountries []string        `json:"productionCountries"`
+	WhereToWatch        *WhereToWatch   `json:"whereToWatch,omitempty"`
+	Credits             *Credits        `json:"credits,omitempty"`
+	CollectionInfo      *CollectionInfo `json:"collectionInfo,omitempty"`
+}
+
+type CollectionInfo struct {
+	ID        int            `json:"id"`
+	Name      string         `json:"name"`
+	Overview  string         `json:"overview"`
+	PosterURL string         `json:"posterUrl"`
+	Parts     []MovieDetails `json:"parts"`
 }
 
 func (h *Handlers) GetMovie(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +65,15 @@ func (h *Handlers) GetMovie(w http.ResponseWriter, r *http.Request) {
 
 	details := toMovieDetails(movie)
 	h.enrichCreditsWithAges(r.Context(), details.Credits, movie.ReleaseDate, movie.ReleaseDate)
+
+	if movie.BelongsToCollection != nil {
+		collection, err := h.tmdbClient.GetCollection(r.Context(), movie.BelongsToCollection.ID)
+		if err != nil {
+			log.Warn().Err(err).Int("collection_id", movie.BelongsToCollection.ID).Msg("failed to fetch collection")
+		} else {
+			details.CollectionInfo = toCollectionInfo(collection)
+		}
+	}
 
 	httputil.JSON(w, http.StatusOK, details)
 }
@@ -108,5 +126,27 @@ func toMovieDetails(movie *tmdb.Movie) *MovieDetails {
 		ProductionCountries: productionCountries,
 		WhereToWatch:        buildWhereToWatch(movie.WatchProviders, "US"),
 		Credits:             buildCredits(movie.Credits),
+	}
+}
+
+func toCollectionInfo(collection *tmdb.Collection) *CollectionInfo {
+	parts := make([]MovieDetails, len(collection.Parts))
+	for i, p := range collection.Parts {
+		parts[i] = MovieDetails{
+			ID:          p.ID,
+			Title:       p.Title,
+			Overview:    p.Overview,
+			PosterURL:   buildImageURL(p.PosterPath, "w300"),
+			ReleaseDate: p.ReleaseDate,
+			VoteAverage: p.VoteAverage,
+		}
+	}
+
+	return &CollectionInfo{
+		ID:        collection.ID,
+		Name:      collection.Name,
+		Overview:  collection.Overview,
+		PosterURL: buildImageURL(collection.PosterPath, "w300"),
+		Parts:     parts,
 	}
 }

@@ -111,7 +111,7 @@ func extractEndpoint(path string) string {
 	}
 
 	switch parts[0] {
-	case "movie", "tv", "person":
+	case "movie", "tv", "person", "collection":
 		return parts[0]
 	case "search":
 		if len(parts) > 1 {

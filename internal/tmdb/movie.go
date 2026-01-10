@@ -9,27 +9,34 @@ import (
 )
 
 type Movie struct {
-	ID                  int                 `json:"id"`
-	ImdbID              string              `json:"imdb_id"`
-	Title               string              `json:"title"`
-	Tagline             string              `json:"tagline"`
-	Overview            string              `json:"overview"`
-	Genres              []Genre             `json:"genres"`
-	PosterPath          string              `json:"poster_path"`
-	Status              string              `json:"status"`
-	ReleaseDate         string              `json:"release_date"`
-	Runtime             int                 `json:"runtime"`
-	Budget              int                 `json:"budget"`
-	Revenue             int                 `json:"revenue"`
-	VoteAverage         float64             `json:"vote_average"`
-	OriginalTitle       string              `json:"original_title"`
-	OriginalLanguage    string              `json:"original_language"`
-	OriginCountry       []string            `json:"origin_country"`
-	SpokenLanguages     []SpokenLanguage    `json:"spoken_languages"`
-	ProductionCompanies []ProductionCompany `json:"production_companies"`
-	ProductionCountries []ProductionCountry `json:"production_countries"`
-	WatchProviders      WatchProviders      `json:"watch/providers"`
-	Credits             Credits             `json:"credits"`
+	ID                  int                  `json:"id"`
+	ImdbID              string               `json:"imdb_id"`
+	Title               string               `json:"title"`
+	Tagline             string               `json:"tagline"`
+	Overview            string               `json:"overview"`
+	Genres              []Genre              `json:"genres"`
+	PosterPath          string               `json:"poster_path"`
+	Status              string               `json:"status"`
+	ReleaseDate         string               `json:"release_date"`
+	Runtime             int                  `json:"runtime"`
+	Budget              int                  `json:"budget"`
+	Revenue             int                  `json:"revenue"`
+	VoteAverage         float64              `json:"vote_average"`
+	OriginalTitle       string               `json:"original_title"`
+	OriginalLanguage    string               `json:"original_language"`
+	OriginCountry       []string             `json:"origin_country"`
+	SpokenLanguages     []SpokenLanguage     `json:"spoken_languages"`
+	ProductionCompanies []ProductionCompany  `json:"production_companies"`
+	ProductionCountries []ProductionCountry  `json:"production_countries"`
+	WatchProviders      WatchProviders       `json:"watch/providers"`
+	Credits             Credits              `json:"credits"`
+	BelongsToCollection *BelongsToCollection `json:"belongs_to_collection"`
+}
+
+type BelongsToCollection struct {
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	PosterPath string `json:"poster_path"`
 }
 
 func (c *Client) GetMovie(ctx context.Context, id int) (*Movie, error) {
