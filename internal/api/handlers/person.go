@@ -2,13 +2,13 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rossbrandon/minimovie-api/internal/age"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog/log"
@@ -70,11 +70,7 @@ func toPersonDetails(person *tmdb.Person) *PersonDetails {
 		deathday = *person.Deathday
 	}
 
-	currentAge, err := currentAge(person.Birthday, deathday)
-	// Log and ignore this error so we don't break the API on bad data
-	if err != nil {
-		log.Error().Err(err).Str("birthday", person.Birthday).Str("deathday", deathday).Msg("failed to calculate current age")
-	}
+	currentAge := currentAge(person.Birthday, deathday)
 
 	return &PersonDetails{
 		ID:            person.ID,
@@ -94,22 +90,12 @@ func toPersonDetails(person *tmdb.Person) *PersonDetails {
 	}
 }
 
-func currentAge(birthday string, deathday string) (*int, error) {
-	birthDate, err := time.Parse(time.DateOnly, birthday)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse birthday: %w", err)
-	}
-
-	endDate := time.Now()
+func currentAge(birthday string, deathday string) *int {
+	endDate := time.Now().Format(time.DateOnly)
 	if deathday != "" {
-		endDate, err = time.Parse(time.DateOnly, deathday)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse deathday: %w", err)
-		}
+		endDate = deathday
 	}
-
-	age := endDate.Year() - birthDate.Year()
-	return &age, nil
+	return age.CalculateAge(birthday, endDate)
 }
 
 func genderToString(gender int) string {

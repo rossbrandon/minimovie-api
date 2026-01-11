@@ -25,7 +25,7 @@ func CalculateAge(birthday, date string) *int {
 	age := d.Year() - bday.Year()
 
 	// Adjust if birthday hasn't occurred yet in the target year
-	if d.YearDay() < bday.YearDay() {
+	if d.Month() < bday.Month() || (d.Month() == bday.Month() && d.Day() < bday.Day()) {
 		age--
 	}
 
