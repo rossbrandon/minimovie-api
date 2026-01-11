@@ -1,4 +1,4 @@
-.PHONY: start watch build fmt local-up local-down
+.PHONY: start watch build sync build-sync fmt local-up local-down
 
 start:
 	@set -a && source .env && go run cmd/api/main.go
@@ -8,6 +8,12 @@ watch:
 
 build:
 	go build -o bin/api cmd/api/main.go
+
+sync:
+	@set -a && source .env && go run cmd/sync/main.go $(if $(START),-start=$(START)) $(if $(END),-end=$(END))
+
+build-sync:
+	go build -o bin/sync cmd/sync/main.go
 
 fmt:
 	go fmt ./...

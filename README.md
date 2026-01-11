@@ -42,43 +42,69 @@ make start
 ```
 minimovie-api/
 ├── cmd/
-│   └── api/
-│       └── main.go                 # Entry point
+│   ├── api/
+│   │   └── main.go                 # API server entry point
+│   └── sync/
+│       └── main.go                 # Person sync job (cron)
 │
 ├── config/
 │   └── config.go                   # Config definitions and loader
 │
 ├── internal/
+│   ├── age/
+│   │   ├── age.go                  # Age calculation utilities
+│   │   └── resolver.go             # Person age resolver (cache → DB → API)
+│   │
 │   ├── api/
 │   │   ├── router.go               # Chi router setup, registers all routes
 │   │   └── handlers/
-│   │       ├── handlers.go         # Chi API Handlers
+│   │       ├── handlers.go         # Handler dependencies
 │   │       ├── credits.go          # Credits types and functions
-│   │       ├── watch.go            # WatchProviders types and functions
-│   │       ├── search.go           # SearchMulti handler
-│   │       ├── movie.go            # GetMovie handler
-│   │       ├── series.go           # GetSeries handler
-│   │       ├── season.go           # GetSeason handler
 │   │       ├── episode.go          # GetEpisode handler
-│   │       └── person.go           # GetPerson handler
+│   │       ├── movie.go            # GetMovie handler
+│   │       ├── person.go           # GetPerson handler
+│   │       ├── search.go           # SearchMulti handler
+│   │       ├── season.go           # GetSeason handler
+│   │       ├── series.go           # GetSeries handler
+│   │       └── watch.go            # WatchProviders types and functions
 │   │
 │   ├── httputil/
 │   │   └── response.go             # JSON(w, status, data), Error(w, status, msg)
 │   │
+│   ├── metrics/
+│   │   ├── metrics.go              # OpenTelemetry metrics
+│   │   └── middleware.go           # HTTP metrics middleware
+│   │
+│   ├── store/
+│   │   ├── bigcache.go             # In-memory cache adapter
+│   │   ├── cache.go                # Cache interface
+│   │   └── postgres.go             # PostgreSQL person store
+│   │
 │   └── tmdb/
-│       ├── client.go               # TMDB Client
+│       ├── client.go               # TMDB HTTP client
+│       ├── changes.go              # GetPersonChanges() for sync
+│       ├── collection.go           # GetCollection()
 │       ├── credits.go              # Credits, AggregateCredits, CombinedCredits types
-│       ├── metadata.go             # Shared types
-│       ├── watch.go                # WatchProviders types
-│       ├── search.go               # SearchMulti()
-│       ├── movie.go                # GetMovie()
-│       ├── series.go               # GetSeries()
-│       ├── season.go               # GetSeason()
 │       ├── episode.go              # GetEpisode()
-│       └── person.go               # GetPerson()
+│       ├── metadata.go             # Shared types
+│       ├── movie.go                # GetMovie()
+│       ├── person.go               # GetPerson()
+│       ├── search.go               # SearchMulti()
+│       ├── season.go               # GetSeason()
+│       ├── series.go               # GetSeries()
+│       └── watch.go                # WatchProviders types
+│
+├── local-development/
+│   ├── docker-compose.yml          # Local Postgres setup
+│   └── init.sql                    # Database schema
+│
+├── openapi/
+│   ├── minimovie-api.yaml          # API specification
+│   └── tmdb.json                   # TMDB API reference
 │
 ├── .env
 ├── .gitignore
+├── env.example
 ├── go.mod
 ├── go.sum
 ├── Makefile
@@ -201,4 +227,33 @@ and not starts_with(http.request.uri.path, "/people/")
 and not starts_with(http.request.uri.path, "/movies/")
 and not starts_with(http.request.uri.path, "/series/")
 )
+```
+
+## Change Sync Logic
+
+In order to keep the cache up to date with TMDB (ie when a person dies), a daily job is run to allow the data to be refreshed from TMDB.
+
+The default behavior will be to pull the past day's changes, but these can be overridden via:
+
+1. env variables: `SYNC_START_DATE` and `SYNC_END_DATE`
+2. Command flags: `make sync START=2026-01-01 END=2026-01-05`
+
+Sync Flow:
+
+```mermaid
+flowchart LR
+    subgraph sync_job [Sync Job - Daily]
+        A[cmd/sync] --> B[TMDB /person/changes API]
+        B --> C[Get person IDs]
+        C --> D[Mark fetched=false in Postgres]
+    end
+
+    subgraph api [API - On Request]
+        E[User Request] --> F[Cache Miss after 24h TTL]
+        F --> G[DB Check: fetched=false]
+        G --> H[Re-fetch from TMDB]
+        H --> I[Update DB + Cache]
+    end
+
+    D -.-> G
 ```

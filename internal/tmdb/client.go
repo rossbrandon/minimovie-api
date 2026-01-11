@@ -90,7 +90,8 @@ func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 		if metrics.M != nil {
 			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, time.Since(start))
 		}
-		return nil, fmt.Errorf("unexpected status: %d", res.StatusCode)
+		errBody, _ := io.ReadAll(res.Body)
+		return nil, fmt.Errorf("unexpected status: %d %s", res.StatusCode, string(errBody))
 	}
 
 	body, err := io.ReadAll(res.Body)

@@ -142,6 +142,27 @@ func (s *PersonStore) UpsertPersonBatch(ctx context.Context, people map[int]Pers
 	return nil
 }
 
+func (s *PersonStore) MarkPeopleStale(ctx context.Context, personIDs []int) (int64, error) {
+	if len(personIDs) == 0 {
+		return 0, nil
+	}
+
+	defer metrics.TrackDbDuration(ctx, "write")()
+
+	query := `
+		update people
+		set fetched = false, updated_at = now()
+		where id = any($1) and fetched = true
+	`
+
+	result, err := s.pool.Exec(ctx, query, personIDs)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected(), nil
+}
+
 func (s *PersonStore) Close() {
 	s.pool.Close()
 }
