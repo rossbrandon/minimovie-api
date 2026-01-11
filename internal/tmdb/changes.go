@@ -51,6 +51,5 @@ func (c *Client) GetPersonChanges(ctx context.Context, startDate, endDate string
 	}
 
 	log.Info().Int("total_changed_people", len(allIDs)).Msg("Completed fetching person changes from TMDB")
-	log.Debug().Ints("changed_ids", allIDs).Msg("Changed IDs")
 	return allIDs, nil
 }

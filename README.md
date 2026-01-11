@@ -257,3 +257,25 @@ flowchart LR
 
     D -.-> G
 ```
+
+Sync Status Tracking:
+
+```mermaid
+flowchart TD
+    A[Parse Flags] --> B{Override dates provided?}
+    B -->|Yes| D[Use provided dates]
+    B -->|No| C[Query last successful job]
+    C --> E{Found previous job?}
+    E -->|Yes| F["start = last job's end_date"]
+    E -->|No| G["start = yesterday (default)"]
+    F --> H["end = today"]
+    G --> H
+    D --> I[StartJob in DB]
+    H --> I
+    I --> J[Execute Sync]
+    J --> K{Success?}
+    K -->|Yes| L[CompleteJob]
+    K -->|No| M[FailJob]
+    L --> N[Exit 0]
+    M --> O[Exit 1]
+```
