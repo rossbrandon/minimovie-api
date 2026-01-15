@@ -57,10 +57,12 @@ func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 	req.Header.Set("Accept", "application/json")
 
 	res, err := c.httpClient.Do(req)
+	duration := time.Since(start)
 	if err != nil {
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, duration)
 		}
+		log.Debug().Str("endpoint", endpoint).Dur("duration_ms", duration).Msg("tmdb api call failed")
 		return nil, fmt.Errorf("failed to execute request: %w", err)
 	}
 	defer res.Body.Close()
@@ -68,28 +70,32 @@ func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 	switch {
 	case res.StatusCode == http.StatusOK:
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "success", res.StatusCode, time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "success", res.StatusCode, duration)
 		}
+		log.Debug().Str("endpoint", endpoint).Int("status", res.StatusCode).Dur("duration_ms", duration).Msg("tmdb api call completed")
 	case res.StatusCode == http.StatusNotFound:
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "not_found", res.StatusCode, time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "not_found", res.StatusCode, duration)
 		}
+		log.Debug().Str("endpoint", endpoint).Int("status", res.StatusCode).Dur("duration_ms", duration).Msg("tmdb api call completed")
 		return nil, ErrNotFound
 	case res.StatusCode == http.StatusTooManyRequests:
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "rate_limited", res.StatusCode, time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "rate_limited", res.StatusCode, duration)
 		}
-		log.Warn().Msg("rate limited by TMDB: retry-after " + res.Header.Get("Retry-After"))
+		log.Warn().Dur("duration_ms", duration).Msg("rate limited by TMDB: retry-after " + res.Header.Get("Retry-After"))
 		return nil, ErrRateLimited
 	case res.StatusCode >= 500:
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, duration)
 		}
+		log.Debug().Str("endpoint", endpoint).Int("status", res.StatusCode).Dur("duration_ms", duration).Msg("tmdb api call completed")
 		return nil, ErrServerError
 	default:
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, time.Since(start))
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, duration)
 		}
+		log.Debug().Str("endpoint", endpoint).Int("status", res.StatusCode).Dur("duration_ms", duration).Msg("tmdb api call completed")
 		errBody, _ := io.ReadAll(res.Body)
 		return nil, fmt.Errorf("unexpected status: %d %s", res.StatusCode, string(errBody))
 	}

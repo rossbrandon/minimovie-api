@@ -188,11 +188,13 @@ func (m *Metrics) RecordCacheWrite(ctx context.Context) {
 	))
 }
 
-func TrackDbDuration(ctx context.Context, operation string) func() {
+func TrackDbDuration(ctx context.Context, operation string, count int) func() {
 	start := time.Now()
 	return func() {
+		duration := time.Since(start)
 		if M != nil {
-			M.RecordDbOperation(ctx, operation, time.Since(start))
+			M.RecordDbOperation(ctx, operation, duration)
 		}
+		log.Debug().Dur("duration_ms", duration).Int("count", count).Str("operation", operation).Msg("db operation completed")
 	}
 }

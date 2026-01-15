@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
@@ -175,6 +176,8 @@ func (r *Resolver) fetchFromApi(ctx context.Context, people []PersonRef) map[int
 		return make(map[int]store.PersonDates)
 	}
 
+	start := time.Now()
+
 	result := make(map[int]store.PersonDates)
 	var mu sync.Mutex
 	var wg sync.WaitGroup
@@ -210,6 +213,7 @@ func (r *Resolver) fetchFromApi(ctx context.Context, people []PersonRef) map[int
 	}
 
 	wg.Wait()
+	log.Info().Dur("duration_ms", time.Since(start)).Int("people_count", len(people)).Int("fetched_count", len(result)).Msg("completed batch API fetch")
 	return result
 }
 
