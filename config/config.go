@@ -12,6 +12,7 @@ import (
 type Config struct {
 	Port                   string
 	Timeout                int
+	LogLevel               string
 	TmdbBaseUrl            string
 	TmdbTimeout            int
 	TmdbAccessToken        string
@@ -23,6 +24,7 @@ type Config struct {
 
 const defaultPort = "8080"
 const defaultTimeout int = 10
+const defaultLogLevel = "info"
 const defaultTmdbBaseUrl = "https://api.themoviedb.org/3"
 const defaultTmdbTimeout int = 10
 const defaultMaxTmdbFetchPerRequest int = 10
@@ -37,6 +39,11 @@ func Load() (*Config, error) {
 	if port == "" {
 		log.Warn().Msg("PORT is not set, using default port")
 		port = defaultPort
+	}
+
+	logLevel := os.Getenv("LOG_LEVEL")
+	if logLevel == "" {
+		logLevel = defaultLogLevel
 	}
 
 	timeoutStr := os.Getenv("TIMEOUT")
@@ -98,6 +105,7 @@ func Load() (*Config, error) {
 	return &Config{
 		Port:                   port,
 		Timeout:                timeout,
+		LogLevel:               logLevel,
 		TmdbBaseUrl:            tmdbBaseUrl,
 		TmdbTimeout:            tmdbTimeout,
 		TmdbAccessToken:        tmdbAccessToken,

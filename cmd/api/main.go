@@ -18,12 +18,16 @@ import (
 func main() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
-	log.Info().Msg("Starting MiniMovie API")
-
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load config")
 	}
+
+	if level, err := zerolog.ParseLevel(cfg.LogLevel); err == nil {
+		zerolog.SetGlobalLevel(level)
+	}
+
+	log.Info().Msg("Starting MiniMovie API")
 
 	ctx := context.Background()
 
