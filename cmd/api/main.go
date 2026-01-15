@@ -8,6 +8,7 @@ import (
 	"github.com/rossbrandon/minimovie-api/internal/age"
 	"github.com/rossbrandon/minimovie-api/internal/api"
 	"github.com/rossbrandon/minimovie-api/internal/api/handlers"
+	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/metrics"
 	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
@@ -66,6 +67,8 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create age resolver")
 	}
 
+	// Initialize API server
+	httputil.DefaultCacheMaxAge = cfg.CacheMaxAge
 	h := handlers.NewHandlers(tmdbClient, ageResolver)
 
 	r := api.NewRouter(h, cfg)

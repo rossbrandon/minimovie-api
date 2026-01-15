@@ -20,6 +20,7 @@ type Config struct {
 	DatabaseURL            string
 	MaxTmdbFetchPerRequest int
 	OTelEnabled            bool
+	CacheMaxAge            int
 }
 
 const defaultPort = "8080"
@@ -28,6 +29,7 @@ const defaultLogLevel = "info"
 const defaultTmdbBaseUrl = "https://api.themoviedb.org/3"
 const defaultTmdbTimeout int = 10
 const defaultMaxTmdbFetchPerRequest int = 10
+const defaultCacheMaxAge int = 3600
 
 func Load() (*Config, error) {
 	tmdbAccessToken := os.Getenv("TMDB_ACCESS_TOKEN")
@@ -102,6 +104,16 @@ func Load() (*Config, error) {
 		otelEnabled = false
 	}
 
+	cacheMaxAgeStr := os.Getenv("CACHE_MAX_AGE")
+	cacheMaxAge := defaultCacheMaxAge
+	if cacheMaxAgeStr != "" {
+		cacheMaxAgeInt, err := strconv.Atoi(cacheMaxAgeStr)
+		if err != nil {
+			return nil, errors.New("CACHE_MAX_AGE is not a valid integer")
+		}
+		cacheMaxAge = cacheMaxAgeInt
+	}
+
 	return &Config{
 		Port:                   port,
 		Timeout:                timeout,
@@ -113,5 +125,6 @@ func Load() (*Config, error) {
 		DatabaseURL:            databaseURL,
 		MaxTmdbFetchPerRequest: maxTmdbFetchPerRequest,
 		OTelEnabled:            otelEnabled,
+		CacheMaxAge:            cacheMaxAge,
 	}, nil
 }
