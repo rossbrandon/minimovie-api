@@ -121,6 +121,7 @@ func (r *Resolver) checkCache(people []PersonRef) (map[int]store.PersonDates, []
 }
 
 func (r *Resolver) getPeopleFromDb(ctx context.Context, misses []PersonRef, result map[int]store.PersonDates) map[int]store.PersonDates {
+	start := time.Now()
 	log.Info().Int("misses_count", len(misses)).Msg("getting people from database")
 	ids := make([]int, len(misses))
 	for i, p := range misses {
@@ -140,7 +141,7 @@ func (r *Resolver) getPeopleFromDb(ctx context.Context, misses []PersonRef, resu
 		}
 	}
 
-	log.Info().Int("db_results_count", len(dbResults)).Msg("got people from database")
+	log.Info().Dur("duration_ms", time.Since(start)).Int("db_results_count", len(dbResults)).Msg("got people from database")
 	return dbResults
 }
 
@@ -222,6 +223,8 @@ func (r *Resolver) persistFetched(ctx context.Context, fetched map[int]store.Per
 		return
 	}
 
+	start := time.Now()
+
 	if err := r.personDB.UpsertPersonBatch(ctx, fetched, nameMap); err != nil {
 		log.Error().Err(err).Msg("failed to batch upsert people to database")
 	}
@@ -230,5 +233,5 @@ func (r *Resolver) persistFetched(ctx context.Context, fetched map[int]store.Per
 		r.cache.Set(id, dates.DateOfBirth, dates.DateOfDeath)
 		result[id] = dates
 	}
-	log.Info().Int("fetched_count", len(fetched)).Msg("persisted fetched people to database and cache")
+	log.Info().Dur("duration_ms", time.Since(start)).Int("fetched_count", len(fetched)).Msg("persisted fetched people to database and cache")
 }

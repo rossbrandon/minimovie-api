@@ -55,7 +55,7 @@ func (s *PersonStore) GetPeople(ctx context.Context, personIDs []int) (map[int]P
 		return make(map[int]PersonDates), nil
 	}
 
-	defer metrics.TrackDbDuration(ctx, "read", len(personIDs))()
+	defer metrics.TrackDbDuration(ctx, "read")()
 
 	query := `
 		select id, date_of_birth, date_of_death, popularity, fetched
@@ -102,7 +102,7 @@ func (s *PersonStore) UpsertPersonBatch(ctx context.Context, people map[int]Pers
 		return nil
 	}
 
-	defer metrics.TrackDbDuration(ctx, "write", len(people))()
+	defer metrics.TrackDbDuration(ctx, "write")()
 
 	batch := &pgx.Batch{}
 	query := `
@@ -147,7 +147,7 @@ func (s *PersonStore) MarkPeopleStale(ctx context.Context, personIDs []int) (int
 		return 0, nil
 	}
 
-	defer metrics.TrackDbDuration(ctx, "write", len(personIDs))()
+	defer metrics.TrackDbDuration(ctx, "write")()
 
 	query := `
 		update people
