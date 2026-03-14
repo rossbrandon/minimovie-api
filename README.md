@@ -78,7 +78,8 @@ minimovie-api/
 │   ├── store/
 │   │   ├── bigcache.go             # In-memory cache adapter
 │   │   ├── cache.go                # Cache interface
-│   │   └── postgres.go             # PostgreSQL person store
+│   │   ├── postgres.go             # PostgreSQL person store
+│   │   └── sync_job.go             # Sync job store operations
 │   │
 │   └── tmdb/
 │       ├── client.go               # TMDB HTTP client
@@ -204,30 +205,6 @@ TMDB API calls are limited per request to avoid N+1 problems. When fetching is r
 
 - **Movies/Episodes**: Single age at release (`ageAtRelease: 32`)
 - **Series**: Age range from first to last air date (`ageRange: "25-32"`)
-
-## Deployment
-
-### Observability
-
-- [Grafana Dashboard](https://rossbrandon.grafana.net/d/rofg2q7/minimovie-api-service-metrics?orgId=1&from=now-30m&to=now&timezone=browser)
-- [Railway Dashboard](https://railway.com/project/fff7464f-52c9-4e91-b358-632b1e4202fb/observability?environmentId=9f32b1f7-f66e-4146-9982-1ec9aef6f573)
-- [Railway Logs](https://railway.com/project/fff7464f-52c9-4e91-b358-632b1e4202fb/logs?environmentId=9f32b1f7-f66e-4146-9982-1ec9aef6f573)
-
-### Cloudflare
-
-#### API Allowlist
-
-The following [Security Rule](https://dash.cloudflare.com/dd630cbdf4b6a4502d25f006d309725c/minimovie.info/security/security-rules) has been defined for the `api.minimovie.info` domain.
-
-```
-(http.host eq "api.minimovie.info"
-and not http.request.uri.path in {"/ping" "/search"}
-and not starts_with(http.request.uri.path, "/series/")
-and not starts_with(http.request.uri.path, "/people/")
-and not starts_with(http.request.uri.path, "/movies/")
-and not starts_with(http.request.uri.path, "/series/")
-)
-```
 
 ## Change Sync Logic
 
