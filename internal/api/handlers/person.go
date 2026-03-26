@@ -32,15 +32,16 @@ type PersonDetails struct {
 }
 
 type FilmCredit struct {
-	ID          int     `json:"id"`
-	Title       string  `json:"title"`
-	PosterURL   string  `json:"posterUrl,omitempty"`
-	ReleaseDate string  `json:"releaseDate,omitempty"`
-	Role        string  `json:"role"`
-	Order       *int    `json:"order,omitempty"`
-	Popularity  float64 `json:"popularity"`
-	VoteAverage float64 `json:"voteAverage"`
-	Type        string  `json:"type"` // "cast" or "crew"
+	ID           int     `json:"id"`
+	Title        string  `json:"title"`
+	PosterURL    string  `json:"posterUrl,omitempty"`
+	ReleaseDate  string  `json:"releaseDate,omitempty"`
+	Role         string  `json:"role"`
+	Order        *int    `json:"order,omitempty"`
+	Popularity   float64 `json:"popularity"`
+	VoteAverage  float64 `json:"voteAverage"`
+	EpisodeCount int     `json:"episodeCount,omitempty"`
+	Type         string  `json:"type"` // "cast" or "crew"
 }
 
 func (h *Handlers) GetPerson(w http.ResponseWriter, r *http.Request) {
@@ -121,15 +122,16 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []
 			continue
 		}
 		result = append(result, FilmCredit{
-			ID:          c.ID,
-			Title:       creditTitle(c.CombinedCreditBase, mediaType),
-			PosterURL:   buildImageURL(c.PosterPath, "w92"),
-			ReleaseDate: creditDate(c.CombinedCreditBase, mediaType),
-			Role:        c.Character,
-			Order:       &c.Order,
-			Popularity:  c.Popularity,
-			VoteAverage: c.VoteAverage,
-			Type:        "cast",
+			ID:           c.ID,
+			Title:        creditTitle(c.CombinedCreditBase, mediaType),
+			PosterURL:    buildImageURL(c.PosterPath, "w92"),
+			ReleaseDate:  creditDate(c.CombinedCreditBase, mediaType),
+			Role:         c.Character,
+			Order:        &c.Order,
+			Popularity:   c.Popularity,
+			VoteAverage:  c.VoteAverage,
+			EpisodeCount: c.EpisodeCount,
+			Type:         "cast",
 		})
 	}
 
@@ -139,14 +141,15 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []
 			continue
 		}
 		result = append(result, FilmCredit{
-			ID:          c.ID,
-			Title:       creditTitle(c.CombinedCreditBase, mediaType),
-			PosterURL:   buildImageURL(c.PosterPath, "w92"),
-			ReleaseDate: creditDate(c.CombinedCreditBase, mediaType),
-			Role:        c.Job,
-			Popularity:  c.Popularity,
-			VoteAverage: c.VoteAverage,
-			Type:        "crew",
+			ID:           c.ID,
+			Title:        creditTitle(c.CombinedCreditBase, mediaType),
+			PosterURL:    buildImageURL(c.PosterPath, "w92"),
+			ReleaseDate:  creditDate(c.CombinedCreditBase, mediaType),
+			Role:         c.Job,
+			Popularity:   c.Popularity,
+			VoteAverage:  c.VoteAverage,
+			EpisodeCount: c.EpisodeCount,
+			Type:         "crew",
 		})
 	}
 

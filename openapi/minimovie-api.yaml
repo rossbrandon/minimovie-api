@@ -704,6 +704,9 @@ components:
         voteAverage:
           type: number
           description: Average user rating (0-10) from TMDB.
+        episodeCount:
+          type: integer
+          description: Number of episodes the person appeared in or worked on (TV series only).
         type:
           type: string
           enum:
