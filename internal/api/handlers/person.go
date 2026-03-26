@@ -39,6 +39,7 @@ type FilmCredit struct {
 	Role        string  `json:"role"`
 	Order       *int    `json:"order,omitempty"`
 	Popularity  float64 `json:"popularity"`
+	VoteAverage float64 `json:"voteAverage"`
 	Type        string  `json:"type"` // "cast" or "crew"
 }
 
@@ -127,6 +128,7 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []
 			Role:        c.Character,
 			Order:       &c.Order,
 			Popularity:  c.Popularity,
+			VoteAverage: c.VoteAverage,
 			Type:        "cast",
 		})
 	}
@@ -143,6 +145,7 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []
 			ReleaseDate: creditDate(c.CombinedCreditBase, mediaType),
 			Role:        c.Job,
 			Popularity:  c.Popularity,
+			VoteAverage: c.VoteAverage,
 			Type:        "crew",
 		})
 	}

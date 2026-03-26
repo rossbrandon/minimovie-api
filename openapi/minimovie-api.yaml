@@ -701,6 +701,9 @@ components:
         popularity:
           type: number
           description: Popularity score of the film/show. Useful for sorting "Known For" credits.
+        voteAverage:
+          type: number
+          description: Average user rating (0-10) from TMDB.
         type:
           type: string
           enum:
@@ -722,6 +725,9 @@ components:
         order:
           type: integer
           description: Billing order (for cast)
+        episodeCount:
+          type: integer
+          description: Number of episodes the person appeared in (for series/season aggregate credits)
         birthday:
           type: string
           format: date

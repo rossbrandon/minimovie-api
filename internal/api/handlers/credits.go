@@ -14,6 +14,7 @@ type Person struct {
 	PhotoURL     string `json:"photoUrl,omitempty"`
 	Role         string `json:"role,omitempty"`
 	Order        int    `json:"order,omitempty"`
+	EpisodeCount int    `json:"episodeCount,omitempty"`
 	Birthday     string `json:"birthday,omitempty"`
 	Deathday     string `json:"deathday,omitempty"`
 	CurrentAge   *int   `json:"currentAge,omitempty"`
@@ -114,11 +115,12 @@ func buildAggregateCredits(credits tmdb.AggregateCredits) *Credits {
 			character = c.Roles[0].Character
 		}
 		cast[i] = Person{
-			ID:       c.ID,
-			Name:     c.Name,
-			PhotoURL: buildImageURL(c.ProfilePath, "w92"),
-			Role:     character,
-			Order:    c.Order,
+			ID:           c.ID,
+			Name:         c.Name,
+			PhotoURL:     buildImageURL(c.ProfilePath, "w92"),
+			Role:         character,
+			Order:        c.Order,
+			EpisodeCount: c.TotalEpisodeCount,
 		}
 	}
 

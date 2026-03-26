@@ -27,11 +27,12 @@ type AggregateCredits struct {
 }
 
 type AggregateCastMember struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	ProfilePath string `json:"profile_path"`
-	Roles       []Role `json:"roles"`
-	Order       int    `json:"order"`
+	ID                int    `json:"id"`
+	Name              string `json:"name"`
+	ProfilePath       string `json:"profile_path"`
+	Roles             []Role `json:"roles"`
+	Order             int    `json:"order"`
+	TotalEpisodeCount int    `json:"total_episode_count"`
 }
 
 type Role struct {
@@ -71,9 +72,10 @@ type CombinedCreditShow struct {
 
 // CombinedCreditBase contains fields shared by both cast and crew credits.
 type CombinedCreditBase struct {
-	ID         int    `json:"id"`
-	MediaType  string `json:"media_type"`
-	PosterPath string `json:"poster_path"`
+	ID          int     `json:"id"`
+	MediaType   string  `json:"media_type"`
+	PosterPath  string  `json:"poster_path"`
+	VoteAverage float64 `json:"vote_average"`
 	CombinedCreditMovie
 	CombinedCreditShow
 }
