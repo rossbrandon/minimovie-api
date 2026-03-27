@@ -60,7 +60,7 @@ func (c *Client) get(ctx context.Context, path string) ([]byte, error) {
 	duration := time.Since(start)
 	if err != nil {
 		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, duration)
+			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", 0, duration)
 		}
 		log.Debug().Str("endpoint", endpoint).Dur("duration_ms", duration).Msg("tmdb api call failed")
 		return nil, fmt.Errorf("failed to execute request: %w", err)
