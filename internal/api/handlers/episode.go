@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -19,10 +20,9 @@ type EpisodeDetails struct {
 	SeasonNumber  int      `json:"seasonNumber"`
 	AirDate       string   `json:"airDate"`
 	Runtime       int      `json:"runtime"`
-	StillURL      string   `json:"stillUrl"`
+	StillPath     string   `json:"stillPath"`
 	VoteAverage   float64  `json:"voteAverage"`
 	VoteCount     int      `json:"voteCount"`
-	GuestStars    []Person `json:"guestStars,omitempty"`
 	Credits       *Credits `json:"credits,omitempty"`
 }
 
@@ -61,22 +61,12 @@ func (h *Handlers) GetEpisode(w http.ResponseWriter, r *http.Request) {
 
 	details := toEpisodeDetails(episode)
 	h.enrichCreditsWithAges(r.Context(), details.Credits, episode.AirDate, episode.AirDate)
-	h.enrichGuestStarsWithAges(r.Context(), details.GuestStars, episode.AirDate)
 
 	httputil.JSON(w, http.StatusOK, details)
 }
 
 func toEpisodeDetails(episode *tmdb.EpisodeDetails) *EpisodeDetails {
-	guestStars := make([]Person, len(episode.GuestStars))
-	for i, g := range episode.GuestStars {
-		guestStars[i] = Person{
-			ID:       g.ID,
-			Name:     g.Name,
-			PhotoURL: buildImageURL(g.ProfilePath, "w92"),
-			Role:     g.Character,
-			Order:    g.Order,
-		}
-	}
+	mergedCast := mergeEpisodeCast(episode.Credits.Cast, episode.Credits.GuestStars)
 
 	return &EpisodeDetails{
 		ID:            episode.ID,
@@ -86,10 +76,33 @@ func toEpisodeDetails(episode *tmdb.EpisodeDetails) *EpisodeDetails {
 		SeasonNumber:  episode.SeasonNumber,
 		AirDate:       episode.AirDate,
 		Runtime:       episode.Runtime,
-		StillURL:      buildImageURL(episode.StillPath, "w300"),
+		StillPath:     episode.StillPath,
 		VoteAverage:   episode.VoteAverage,
 		VoteCount:     episode.VoteCount,
-		GuestStars:    guestStars,
-		Credits:       buildCredits(tmdb.Credits{Crew: episode.Crew}),
+		Credits:       buildCredits(tmdb.Credits{Cast: mergedCast, Crew: episode.Credits.Crew}),
 	}
+}
+
+func mergeEpisodeCast(regulars, guests []tmdb.CastMember) []tmdb.CastMember {
+	seen := make(map[int]int) // person ID -> index in merged
+	merged := make([]tmdb.CastMember, 0, len(regulars)+len(guests))
+
+	for _, c := range regulars {
+		seen[c.ID] = len(merged)
+		merged = append(merged, c)
+	}
+	for _, g := range guests {
+		if idx, ok := seen[g.ID]; ok {
+			if g.Order < merged[idx].Order {
+				merged[idx] = g
+			}
+			continue
+		}
+		merged = append(merged, g)
+	}
+
+	sort.Slice(merged, func(i, j int) bool {
+		return merged[i].Order < merged[j].Order
+	})
+	return merged
 }

@@ -15,7 +15,7 @@ type SeasonDetails struct {
 	ID           int              `json:"id"`
 	Name         string           `json:"name"`
 	Overview     string           `json:"overview"`
-	PosterURL    string           `json:"posterUrl"`
+	PosterPath   string           `json:"posterPath"`
 	SeasonNumber int              `json:"seasonNumber"`
 	AirDate      string           `json:"airDate"`
 	VoteAverage  float64          `json:"voteAverage"`
@@ -32,7 +32,7 @@ type EpisodeSummary struct {
 	SeasonNumber  int     `json:"seasonNumber"`
 	AirDate       string  `json:"airDate"`
 	Runtime       int     `json:"runtime"`
-	StillURL      string  `json:"stillUrl"`
+	StillPath     string  `json:"stillPath"`
 	VoteAverage   float64 `json:"voteAverage"`
 }
 
@@ -79,7 +79,7 @@ func toSeasonDetails(season *tmdb.SeasonDetails) *SeasonDetails {
 			SeasonNumber:  e.SeasonNumber,
 			AirDate:       e.AirDate,
 			Runtime:       e.Runtime,
-			StillURL:      buildImageURL(e.StillPath, "w300"),
+			StillPath:     e.StillPath,
 			VoteAverage:   e.VoteAverage,
 		}
 	}
@@ -88,7 +88,7 @@ func toSeasonDetails(season *tmdb.SeasonDetails) *SeasonDetails {
 		ID:           season.ID,
 		Name:         season.Name,
 		Overview:     season.Overview,
-		PosterURL:    buildImageURL(season.PosterPath, "w300"),
+		PosterPath:   season.PosterPath,
 		SeasonNumber: season.SeasonNumber,
 		AirDate:      season.AirDate,
 		VoteAverage:  season.VoteAverage,

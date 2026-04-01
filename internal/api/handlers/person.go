@@ -24,7 +24,7 @@ type PersonDetails struct {
 	CurrentAge    *int         `json:"currentAge,omitempty"`
 	Gender        string       `json:"gender"`
 	PlaceOfBirth  string       `json:"placeOfBirth,omitempty"`
-	PhotoURL      string       `json:"photoUrl"`
+	PhotoPath     string       `json:"photoPath"`
 	KnownFor      string       `json:"knownFor"`
 	AlsoKnownAs   []string     `json:"alsoKnownAs,omitempty"`
 	MovieCredits  []FilmCredit `json:"movieCredits,omitempty"`
@@ -34,14 +34,15 @@ type PersonDetails struct {
 type FilmCredit struct {
 	ID           int     `json:"id"`
 	Title        string  `json:"title"`
-	PosterURL    string  `json:"posterUrl,omitempty"`
+	PosterPath   string  `json:"posterPath,omitempty"`
 	ReleaseDate  string  `json:"releaseDate,omitempty"`
 	Role         string  `json:"role"`
 	Order        *int    `json:"order,omitempty"`
 	Popularity   float64 `json:"popularity"`
 	VoteAverage  float64 `json:"voteAverage"`
+	VoteCount    int     `json:"voteCount"`
 	EpisodeCount int     `json:"episodeCount,omitempty"`
-	Type         string  `json:"type"` // "cast" or "crew"
+	Type         string  `json:"type"`
 }
 
 func (h *Handlers) GetPerson(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +85,7 @@ func toPersonDetails(person *tmdb.Person) *PersonDetails {
 		CurrentAge:    currentAge,
 		Gender:        genderToString(person.Gender),
 		PlaceOfBirth:  person.PlaceOfBirth,
-		PhotoURL:      buildImageURL(person.ProfilePath, "w92"),
+		PhotoPath:     person.ProfilePath,
 		KnownFor:      person.KnownForDepartment,
 		AlsoKnownAs:   person.AlsoKnownAs,
 		MovieCredits:  buildFilmCredits(person.CombinedCredits, tmdb.MediaTypeMovie),
@@ -116,7 +117,6 @@ func genderToString(gender int) string {
 func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []FilmCredit {
 	var result []FilmCredit
 
-	// Add cast credits
 	for _, c := range credits.Cast {
 		if c.MediaType != string(mediaType) {
 			continue
@@ -124,18 +124,18 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []
 		result = append(result, FilmCredit{
 			ID:           c.ID,
 			Title:        creditTitle(c.CombinedCreditBase, mediaType),
-			PosterURL:    buildImageURL(c.PosterPath, "w92"),
+			PosterPath:   c.PosterPath,
 			ReleaseDate:  creditDate(c.CombinedCreditBase, mediaType),
 			Role:         c.Character,
-			Order:        &c.Order,
+			Order:        c.Order,
 			Popularity:   c.Popularity,
 			VoteAverage:  c.VoteAverage,
+			VoteCount:    c.VoteCount,
 			EpisodeCount: c.EpisodeCount,
 			Type:         "cast",
 		})
 	}
 
-	// Add crew credits
 	for _, c := range credits.Crew {
 		if c.MediaType != string(mediaType) {
 			continue
@@ -143,17 +143,17 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []
 		result = append(result, FilmCredit{
 			ID:           c.ID,
 			Title:        creditTitle(c.CombinedCreditBase, mediaType),
-			PosterURL:    buildImageURL(c.PosterPath, "w92"),
+			PosterPath:   c.PosterPath,
 			ReleaseDate:  creditDate(c.CombinedCreditBase, mediaType),
 			Role:         c.Job,
 			Popularity:   c.Popularity,
 			VoteAverage:  c.VoteAverage,
+			VoteCount:    c.VoteCount,
 			EpisodeCount: c.EpisodeCount,
 			Type:         "crew",
 		})
 	}
 
-	// Sort by popularity descending (most popular first)
 	sort.Slice(result, func(i, j int) bool {
 		return result[i].Popularity > result[j].Popularity
 	})

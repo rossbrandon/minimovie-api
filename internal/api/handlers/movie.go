@@ -18,7 +18,7 @@ type MovieDetails struct {
 	Tagline             string          `json:"tagline"`
 	Overview            string          `json:"overview"`
 	Genres              []string        `json:"genres"`
-	PosterURL           string          `json:"posterUrl"`
+	PosterPath          string          `json:"posterPath"`
 	Status              string          `json:"status"`
 	ReleaseDate         string          `json:"releaseDate"`
 	Runtime             int             `json:"runtime"`
@@ -37,11 +37,11 @@ type MovieDetails struct {
 }
 
 type CollectionInfo struct {
-	ID        int            `json:"id"`
-	Name      string         `json:"name"`
-	Overview  string         `json:"overview"`
-	PosterURL string         `json:"posterUrl"`
-	Parts     []MovieDetails `json:"parts"`
+	ID         int            `json:"id"`
+	Name       string         `json:"name"`
+	Overview   string         `json:"overview"`
+	PosterPath string         `json:"posterPath"`
+	Parts      []MovieDetails `json:"parts"`
 }
 
 func (h *Handlers) GetMovie(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +111,7 @@ func toMovieDetails(movie *tmdb.Movie) *MovieDetails {
 		Tagline:             movie.Tagline,
 		Overview:            movie.Overview,
 		Genres:              genres,
-		PosterURL:           buildImageURL(movie.PosterPath, "w300"),
+		PosterPath:          movie.PosterPath,
 		Status:              movie.Status,
 		ReleaseDate:         movie.ReleaseDate,
 		Runtime:             movie.Runtime,
@@ -136,17 +136,17 @@ func toCollectionInfo(collection *tmdb.Collection) *CollectionInfo {
 			ID:          p.ID,
 			Title:       p.Title,
 			Overview:    p.Overview,
-			PosterURL:   buildImageURL(p.PosterPath, "w300"),
+			PosterPath:  p.PosterPath,
 			ReleaseDate: p.ReleaseDate,
 			VoteAverage: p.VoteAverage,
 		}
 	}
 
 	return &CollectionInfo{
-		ID:        collection.ID,
-		Name:      collection.Name,
-		Overview:  collection.Overview,
-		PosterURL: buildImageURL(collection.PosterPath, "w300"),
-		Parts:     parts,
+		ID:         collection.ID,
+		Name:       collection.Name,
+		Overview:   collection.Overview,
+		PosterPath: collection.PosterPath,
+		Parts:      parts,
 	}
 }

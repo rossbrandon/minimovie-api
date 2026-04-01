@@ -17,7 +17,7 @@ type SeriesDetails struct {
 	Tagline             string        `json:"tagline"`
 	Overview            string        `json:"overview"`
 	Genres              []string      `json:"genres"`
-	PosterURL           string        `json:"posterUrl"`
+	PosterPath          string        `json:"posterPath"`
 	Status              string        `json:"status"`
 	InProduction        bool          `json:"inProduction"`
 	FirstAirDate        string        `json:"firstAirDate"`
@@ -42,7 +42,7 @@ type SeriesDetails struct {
 type Network struct {
 	ID            int    `json:"id"`
 	Name          string `json:"name"`
-	LogoURL       string `json:"logoUrl"`
+	LogoPath      string `json:"logoPath"`
 	OriginCountry string `json:"originCountry"`
 }
 
@@ -53,7 +53,7 @@ type Season struct {
 	SeasonNumber int     `json:"seasonNumber"`
 	EpisodeCount int     `json:"episodeCount"`
 	AirDate      string  `json:"airDate"`
-	PosterURL    string  `json:"posterUrl"`
+	PosterPath   string  `json:"posterPath"`
 	VoteAverage  float64 `json:"voteAverage"`
 }
 
@@ -111,9 +111,9 @@ func toSeriesDetails(series *tmdb.Series) *SeriesDetails {
 	createdBy := make([]Person, len(series.CreatedBy))
 	for i, c := range series.CreatedBy {
 		createdBy[i] = Person{
-			ID:       c.ID,
-			Name:     c.Name,
-			PhotoURL: buildImageURL(c.ProfilePath, "w92"),
+			ID:        c.ID,
+			Name:      c.Name,
+			PhotoPath: c.ProfilePath,
 		}
 	}
 
@@ -122,14 +122,13 @@ func toSeriesDetails(series *tmdb.Series) *SeriesDetails {
 		networks[i] = Network{
 			ID:            n.ID,
 			Name:          n.Name,
-			LogoURL:       buildImageURL(n.LogoPath, "w92"),
+			LogoPath:      n.LogoPath,
 			OriginCountry: n.OriginCountry,
 		}
 	}
 
 	seasons := make([]Season, 0, len(series.Seasons))
 	for _, s := range series.Seasons {
-		// Skip "Specials" season (season 0)
 		if s.SeasonNumber == 0 {
 			continue
 		}
@@ -140,7 +139,7 @@ func toSeriesDetails(series *tmdb.Series) *SeriesDetails {
 			SeasonNumber: s.SeasonNumber,
 			EpisodeCount: s.EpisodeCount,
 			AirDate:      s.AirDate,
-			PosterURL:    buildImageURL(s.PosterPath, "w92"),
+			PosterPath:   s.PosterPath,
 			VoteAverage:  s.VoteAverage,
 		})
 	}
@@ -151,7 +150,7 @@ func toSeriesDetails(series *tmdb.Series) *SeriesDetails {
 		Tagline:             series.Tagline,
 		Overview:            series.Overview,
 		Genres:              genres,
-		PosterURL:           buildImageURL(series.PosterPath, "w300"),
+		PosterPath:          series.PosterPath,
 		Status:              series.Status,
 		InProduction:        series.InProduction,
 		FirstAirDate:        series.FirstAirDate,

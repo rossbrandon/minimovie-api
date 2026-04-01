@@ -11,7 +11,7 @@ import (
 type Person struct {
 	ID           int    `json:"id"`
 	Name         string `json:"name"`
-	PhotoURL     string `json:"photoUrl,omitempty"`
+	PhotoPath    string `json:"photoPath,omitempty"`
 	Role         string `json:"role,omitempty"`
 	Order        int    `json:"order,omitempty"`
 	EpisodeCount int    `json:"episodeCount,omitempty"`
@@ -74,21 +74,21 @@ func buildCredits(credits tmdb.Credits) *Credits {
 	cast := make([]Person, len(credits.Cast))
 	for i, c := range credits.Cast {
 		cast[i] = Person{
-			ID:       c.ID,
-			Name:     c.Name,
-			PhotoURL: buildImageURL(c.ProfilePath, "w92"),
-			Role:     c.Character,
-			Order:    c.Order,
+			ID:        c.ID,
+			Name:      c.Name,
+			PhotoPath: c.ProfilePath,
+			Role:      c.Character,
+			Order:     c.Order,
 		}
 	}
 
 	var crew crewBuilder
 	for _, c := range credits.Crew {
 		person := Person{
-			ID:       c.ID,
-			Name:     c.Name,
-			PhotoURL: buildImageURL(c.ProfilePath, "w92"),
-			Role:     c.Job,
+			ID:        c.ID,
+			Name:      c.Name,
+			PhotoPath: c.ProfilePath,
+			Role:      c.Job,
 		}
 		crew.add(person, c.Job)
 	}
@@ -117,7 +117,7 @@ func buildAggregateCredits(credits tmdb.AggregateCredits) *Credits {
 		cast[i] = Person{
 			ID:           c.ID,
 			Name:         c.Name,
-			PhotoURL:     buildImageURL(c.ProfilePath, "w92"),
+			PhotoPath:    c.ProfilePath,
 			Role:         character,
 			Order:        c.Order,
 			EpisodeCount: c.TotalEpisodeCount,
@@ -128,10 +128,10 @@ func buildAggregateCredits(credits tmdb.AggregateCredits) *Credits {
 	for _, c := range credits.Crew {
 		for _, j := range c.Jobs {
 			person := Person{
-				ID:       c.ID,
-				Name:     c.Name,
-				PhotoURL: buildImageURL(c.ProfilePath, "w92"),
-				Role:     j.Job,
+				ID:        c.ID,
+				Name:      c.Name,
+				PhotoPath: c.ProfilePath,
+				Role:      j.Job,
 			}
 			crew.add(person, j.Job)
 		}
@@ -160,17 +160,14 @@ func collectPeopleForEnrichment(credits *Credits) []age.PersonRef {
 
 	var refs []age.PersonRef
 
-	// Priority 1: Directors
 	for _, p := range credits.Directors {
 		refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: age.PriorityDirector})
 	}
 
-	// Priority 2: Writers
 	for _, p := range credits.Writers {
 		refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: age.PriorityWriter})
 	}
 
-	// Priority 3-4: Cast (top 10 = priority 3, rest = priority 4)
 	for i, p := range credits.Cast {
 		priority := age.PriorityTopCast
 		if i >= 10 {
@@ -179,7 +176,6 @@ func collectPeopleForEnrichment(credits *Credits) []age.PersonRef {
 		refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: priority})
 	}
 
-	// Priority 5: Other crew
 	addCrew := func(people []Person) {
 		for _, p := range people {
 			refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: age.PriorityCrew})
@@ -241,31 +237,4 @@ func (h *Handlers) enrichCreditsWithAges(ctx context.Context, credits *Credits, 
 	applyAges(credits.ProductionDesign)
 	applyAges(credits.CostumeDesign)
 	applyAges(credits.Casting)
-}
-
-func (h *Handlers) enrichGuestStarsWithAges(ctx context.Context, guestStars []Person, airDate string) {
-	if len(guestStars) == 0 || h.ageResolver == nil {
-		return
-	}
-
-	var people []age.PersonRef
-	for i, p := range guestStars {
-		if i >= 25 {
-			break
-		}
-		priority := age.PriorityTopCast
-		if i >= 10 {
-			priority = age.PriorityCast
-		}
-		people = append(people, age.PersonRef{ID: p.ID, Name: p.Name, Priority: priority})
-	}
-
-	birthdays := h.ageResolver.Resolve(ctx, people)
-	for i := range guestStars {
-		dates, ok := birthdays[guestStars[i].ID]
-		if !ok || dates.DateOfBirth == "" {
-			continue
-		}
-		guestStars[i].AgeAtRelease = age.CalculateAge(dates.DateOfBirth, airDate)
-	}
 }

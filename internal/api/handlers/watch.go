@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"fmt"
-
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 )
 
@@ -15,15 +13,8 @@ type WhereToWatch struct {
 }
 
 type WatchProvider struct {
-	Name    string `json:"name"`
-	LogoURL string `json:"logoUrl"`
-}
-
-func buildImageURL(path string, size string) string {
-	if path == "" {
-		return ""
-	}
-	return fmt.Sprintf("https://image.tmdb.org/t/p/%s%s", size, path)
+	Name     string `json:"name"`
+	LogoPath string `json:"logoPath"`
 }
 
 func buildWhereToWatch(wp tmdb.WatchProviders, country string) *WhereToWatch {
@@ -48,8 +39,8 @@ func toWatchProviders(providers []tmdb.Provider) []WatchProvider {
 	result := make([]WatchProvider, len(providers))
 	for i, p := range providers {
 		result[i] = WatchProvider{
-			Name:    p.ProviderName,
-			LogoURL: buildImageURL(p.LogoPath, "w45"),
+			Name:     p.ProviderName,
+			LogoPath: p.LogoPath,
 		}
 	}
 	return result

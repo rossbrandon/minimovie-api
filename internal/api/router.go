@@ -47,6 +47,7 @@ func NewRouter(h *handlers.Handlers, config *config.Config) *chi.Mux {
 		r.Get("/series/{id}", h.GetSeries)
 		r.Get("/series/{seriesId}/seasons/{seasonNumber}", h.GetSeason)
 		r.Get("/series/{seriesId}/seasons/{seasonNumber}/episodes/{episodeNumber}", h.GetEpisode)
+		r.Get("/series/{seriesId}/person/{personId}/credits", h.GetPersonSeriesCredits)
 
 		// People
 		r.Get("/people/{id}", h.GetPerson)

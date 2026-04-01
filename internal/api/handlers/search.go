@@ -32,7 +32,7 @@ type SearchResult struct {
 	MediaType   MediaType `json:"mediaType"`
 	Title       string    `json:"title"`
 	Overview    string    `json:"overview,omitempty"`
-	PosterURL   string    `json:"posterUrl,omitempty"`
+	PosterPath  string    `json:"posterPath,omitempty"`
 	ReleaseDate string    `json:"releaseDate,omitempty"`
 	KnownFor    string    `json:"knownFor,omitempty"`
 	Age         int       `json:"age,omitempty"`
@@ -144,17 +144,17 @@ func toSearchResult(r tmdb.SearchResult) SearchResult {
 	case tmdb.MediaTypeMovie:
 		result.MediaType = MediaTypeMovie
 		result.Title = r.Title
-		result.PosterURL = buildImageURL(r.PosterPath, "w185")
+		result.PosterPath = r.PosterPath
 		result.ReleaseDate = r.ReleaseDate
 	case tmdb.MediaTypeTV:
 		result.MediaType = MediaTypeSeries
 		result.Title = r.Name
-		result.PosterURL = buildImageURL(r.PosterPath, "w185")
+		result.PosterPath = r.PosterPath
 		result.ReleaseDate = r.FirstAirDate
 	case tmdb.MediaTypePerson:
 		result.MediaType = MediaTypePerson
 		result.Title = r.Name
-		result.PosterURL = buildImageURL(r.ProfilePath, "w185")
+		result.PosterPath = r.ProfilePath
 		result.KnownFor = r.KnownForDepartment
 	}
 

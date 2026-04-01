@@ -36,6 +36,7 @@ type AggregateCastMember struct {
 }
 
 type Role struct {
+	CreditID     string `json:"credit_id"`
 	Character    string `json:"character"`
 	EpisodeCount int    `json:"episode_count"`
 }
@@ -76,6 +77,7 @@ type CombinedCreditBase struct {
 	MediaType   string  `json:"media_type"`
 	PosterPath  string  `json:"poster_path"`
 	VoteAverage float64 `json:"vote_average"`
+	VoteCount   int     `json:"vote_count"`
 	CombinedCreditMovie
 	CombinedCreditShow
 }
@@ -84,7 +86,7 @@ type CombinedCastCredit struct {
 	CombinedCreditBase
 	Character    string  `json:"character"`
 	EpisodeCount int     `json:"episode_count"`
-	Order        int     `json:"order"`
+	Order        *int    `json:"order"`
 	Popularity   float64 `json:"popularity"`
 }
 
