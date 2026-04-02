@@ -27,3 +27,14 @@ create table if not exists sync_job_status (
     created_at timestamp default now(),
     updated_at timestamp default now()
 );
+
+create table if not exists season_cast_cache (
+    series_id     int not null,
+    season_number int not null,
+    cast_data     jsonb not null,
+    expires_at    timestamptz not null,
+    created_at    timestamptz not null default now(),
+    primary key (series_id, season_number)
+);
+
+create index if not exists idx_season_cast_cache_expires on season_cast_cache (expires_at);

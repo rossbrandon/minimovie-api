@@ -49,8 +49,15 @@ func main() {
 	}
 	defer pool.Close()
 
-	// Initialize BigCache stores
+	// Initialize stores
 	personStore := store.NewPersonStore(pool)
+
+	seasonCastCache, err := store.NewSeasonCastBigCacheAdapter(ctx)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to create season cast BigCache")
+	}
+	seasonCastStore := store.NewSeasonCastPostgresStore(pool)
+	seasonCastTiered := store.NewSeasonCastTieredCache(seasonCastCache, seasonCastStore)
 
 	// Initialize TMDB client
 	tmdbClient := tmdb.NewClient(tmdb.Config{
@@ -69,7 +76,7 @@ func main() {
 
 	// Initialize API server
 	httputil.DefaultCacheMaxAge = cfg.CacheMaxAge
-	h := handlers.NewHandlers(tmdbClient, ageResolver)
+	h := handlers.NewHandlers(tmdbClient, ageResolver, seasonCastTiered)
 
 	r := api.NewRouter(h, cfg)
 	log.Info().Msg("Server is listening on port " + cfg.Port)

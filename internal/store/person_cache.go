@@ -61,13 +61,13 @@ func (a *BigCacheAdapter) Get(personID int) (dob, dod string, found bool) {
 	duration := time.Since(start)
 	if err != nil {
 		if metrics.M != nil {
-			metrics.M.RecordCacheMiss(context.Background())
+			metrics.M.RecordCacheMiss(context.Background(), "person")
 		}
 		log.Trace().Dur("duration_ms", duration).Int("person_id", personID).Bool("hit", false).Msg("cache read completed")
 		return "", "", false
 	}
 	if metrics.M != nil {
-		metrics.M.RecordCacheHit(context.Background())
+		metrics.M.RecordCacheHit(context.Background(), "person")
 	}
 	log.Trace().Dur("duration_ms", duration).Int("person_id", personID).Bool("hit", true).Msg("cache read completed")
 	dob, dod = decode(data)
@@ -82,7 +82,7 @@ func (a *BigCacheAdapter) Set(personID int, dob, dod string) {
 	}
 	duration := time.Since(start)
 	if metrics.M != nil {
-		metrics.M.RecordCacheWrite(context.Background())
+		metrics.M.RecordCacheWrite(context.Background(), "person")
 	}
 	log.Trace().Dur("duration_ms", duration).Int("person_id", personID).Msg("cache write completed")
 }

@@ -26,30 +26,6 @@ func NewPersonStore(pool *pgxpool.Pool) *PersonStore {
 	return &PersonStore{pool: pool}
 }
 
-func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
-	config, err := pgxpool.ParseConfig(databaseURL)
-	if err != nil {
-		return nil, err
-	}
-
-	config.MaxConns = 20
-	config.MinConns = 5
-	config.MaxConnLifetime = time.Hour
-	config.MaxConnIdleTime = 30 * time.Minute
-	config.HealthCheckPeriod = time.Minute
-
-	pool, err := pgxpool.NewWithConfig(ctx, config)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := pool.Ping(ctx); err != nil {
-		return nil, err
-	}
-
-	return pool, nil
-}
-
 func (s *PersonStore) GetPeople(ctx context.Context, personIDs []int) (map[int]PersonDates, error) {
 	if len(personIDs) == 0 {
 		return make(map[int]PersonDates), nil

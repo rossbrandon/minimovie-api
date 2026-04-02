@@ -27,6 +27,7 @@ type Metrics struct {
 	DbOperationDuration metric.Float64Histogram
 
 	CacheOperationsTotal metric.Int64Counter
+	DbRowsPurgedTotal    metric.Int64Counter
 }
 
 type Config struct {
@@ -127,6 +128,14 @@ func initMetrics(meter metric.Meter) (*Metrics, error) {
 		return nil, err
 	}
 
+	m.DbRowsPurgedTotal, err = meter.Int64Counter("db_rows_purged_total",
+		metric.WithDescription("Total number of expired rows purged from cache tables"),
+		metric.WithUnit("{row}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return m, nil
 }
 
@@ -170,21 +179,30 @@ func (m *Metrics) RecordDbOperation(ctx context.Context, operation string, durat
 	m.DbOperationDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(attrs...))
 }
 
-func (m *Metrics) RecordCacheHit(ctx context.Context) {
+func (m *Metrics) RecordCacheHit(ctx context.Context, store string) {
 	m.CacheOperationsTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("operation", "hit"),
+		attribute.String("store", store),
 	))
 }
 
-func (m *Metrics) RecordCacheMiss(ctx context.Context) {
+func (m *Metrics) RecordCacheMiss(ctx context.Context, store string) {
 	m.CacheOperationsTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("operation", "miss"),
+		attribute.String("store", store),
 	))
 }
 
-func (m *Metrics) RecordCacheWrite(ctx context.Context) {
+func (m *Metrics) RecordCacheWrite(ctx context.Context, store string) {
 	m.CacheOperationsTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("operation", "write"),
+		attribute.String("store", store),
+	))
+}
+
+func (m *Metrics) RecordDbPurge(ctx context.Context, table string, count int64) {
+	m.DbRowsPurgedTotal.Add(ctx, count, metric.WithAttributes(
+		attribute.String("table", table),
 	))
 }
 

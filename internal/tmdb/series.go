@@ -99,8 +99,7 @@ type SeasonSummary struct {
 
 type SeriesWithSeasons struct {
 	Series
-	RegularCredits Credits
-	SeasonDetails  map[int]SeasonSummary
+	SeasonDetails map[int]SeasonSummary
 }
 
 const maxAppendItems = 20
@@ -108,8 +107,8 @@ const maxAppendItems = 20
 func (c *Client) GetSeriesWithSeasons(ctx context.Context, id int) (*SeriesWithSeasons, error) {
 	log.Info().Int("id", id).Msg("Getting series with seasons from TMDB")
 
-	maxSeasonsFirstBatch := maxAppendItems - 2 // reserve slots for credits + aggregate_credits
-	parts := []string{"credits", "aggregate_credits"}
+	maxSeasonsFirstBatch := maxAppendItems - 1 // reserve slot for aggregate_credits
+	parts := []string{"aggregate_credits"}
 	for i := 1; i <= maxSeasonsFirstBatch; i++ {
 		parts = append(parts, fmt.Sprintf("season/%d", i))
 	}
@@ -128,13 +127,6 @@ func (c *Client) GetSeriesWithSeasons(ctx context.Context, id int) (*SeriesWithS
 	var series Series
 	if err := json.Unmarshal(body, &series); err != nil {
 		return nil, fmt.Errorf("failed to parse series: %w", err)
-	}
-
-	var credits Credits
-	if creditsRaw, ok := raw["credits"]; ok {
-		if err := json.Unmarshal(creditsRaw, &credits); err != nil {
-			return nil, fmt.Errorf("failed to parse credits: %w", err)
-		}
 	}
 
 	seasonDetails := make(map[int]SeasonSummary)
@@ -196,8 +188,7 @@ func (c *Client) GetSeriesWithSeasons(ctx context.Context, id int) (*SeriesWithS
 	}
 
 	return &SeriesWithSeasons{
-		Series:         series,
-		RegularCredits: credits,
-		SeasonDetails:  seasonDetails,
+		Series:        series,
+		SeasonDetails: seasonDetails,
 	}, nil
 }

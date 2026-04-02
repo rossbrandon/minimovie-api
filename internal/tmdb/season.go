@@ -33,6 +33,22 @@ type Episode struct {
 	VoteAverage   float64 `json:"vote_average"`
 }
 
+func (c *Client) GetSeasonAggregateCredits(ctx context.Context, seriesID, seasonNumber int) (*AggregateCredits, error) {
+	path := fmt.Sprintf("/tv/%d/season/%d/aggregate_credits", seriesID, seasonNumber)
+
+	body, err := c.get(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+
+	var credits AggregateCredits
+	if err := json.Unmarshal(body, &credits); err != nil {
+		return nil, fmt.Errorf("failed to parse season aggregate credits: %w", err)
+	}
+
+	return &credits, nil
+}
+
 func (c *Client) GetSeason(ctx context.Context, seriesID, seasonNumber int) (*SeasonDetails, error) {
 	log.Info().Int("series_id", seriesID).Int("season", seasonNumber).Msg("Getting season from TMDB")
 	extras := "watch/providers,aggregate_credits"

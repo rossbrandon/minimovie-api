@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
@@ -88,19 +90,63 @@ func (h *Handlers) GetPersonSeriesCredits(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	isRegular := false
-	for _, c := range data.RegularCredits.Cast {
-		if c.ID == personID {
-			isRegular = true
-			break
-		}
-	}
-
-	regularInAll := isRegular && member.TotalEpisodeCount >= data.NumberOfEpisodes
-
 	roles := make([]RoleSummary, len(member.Roles))
 	for i, r := range member.Roles {
 		roles[i] = RoleSummary{Character: r.Character}
+	}
+
+	seriesFinished := data.Status == "Ended" || data.Status == "Canceled"
+
+	// Resolve per-season cast maps: check cache, then fetch misses concurrently
+	seasonCastMaps := make(map[int]map[int]int)
+	var missedSeasons []int
+
+	for i := 1; i <= data.NumberOfSeasons; i++ {
+		if _, ok := data.SeasonDetails[i]; !ok {
+			continue
+		}
+		castMap, ok := h.seasonCastCache.Get(r.Context(), seriesID, i)
+		if ok {
+			seasonCastMaps[i] = castMap
+		} else {
+			missedSeasons = append(missedSeasons, i)
+		}
+	}
+
+	if len(missedSeasons) > 0 {
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+
+		for _, sn := range missedSeasons {
+			wg.Add(1)
+			go func(seasonNum int) {
+				defer wg.Done()
+				credits, err := h.tmdbClient.GetSeasonAggregateCredits(r.Context(), seriesID, seasonNum)
+				if err != nil {
+					log.Warn().Err(err).Int("series_id", seriesID).Int("season", seasonNum).Msg("failed to fetch season aggregate credits")
+					return
+				}
+
+				castMap := make(map[int]int, len(credits.Cast))
+				for _, c := range credits.Cast {
+					castMap[c.ID] = c.TotalEpisodeCount
+				}
+
+				var expiresAt time.Time
+				if seriesFinished || seasonNum < data.NumberOfSeasons {
+					expiresAt = time.Now().Add(6 * 30 * 24 * time.Hour) // ~6 months
+				} else {
+					expiresAt = time.Now().Add(24 * time.Hour)
+				}
+
+				h.seasonCastCache.Set(r.Context(), seriesID, seasonNum, castMap, expiresAt)
+
+				mu.Lock()
+				seasonCastMaps[seasonNum] = castMap
+				mu.Unlock()
+			}(sn)
+		}
+		wg.Wait()
 	}
 
 	var seasons []PersonSeasonDetail
@@ -110,9 +156,16 @@ func (h *Handlers) GetPersonSeriesCredits(w http.ResponseWriter, r *http.Request
 			continue
 		}
 
+		castMap := seasonCastMaps[i]
+		personEpCount := 0
+		if castMap != nil {
+			personEpCount = castMap[personID]
+		}
+		inAllEpisodes := personEpCount >= len(sd.Episodes)
+
 		var episodes []PersonEpisodeDetail
 		for _, ep := range sd.Episodes {
-			if regularInAll {
+			if inAllEpisodes {
 				episodes = append(episodes, PersonEpisodeDetail{
 					EpisodeNumber: ep.EpisodeNumber,
 					Name:          ep.Name,
@@ -122,24 +175,16 @@ func (h *Handlers) GetPersonSeriesCredits(w http.ResponseWriter, r *http.Request
 				continue
 			}
 
-			appeared := false
-			if isRegular {
-				appeared = true
-			}
 			for _, gs := range ep.GuestStars {
 				if gs.ID == personID {
-					appeared = true
+					episodes = append(episodes, PersonEpisodeDetail{
+						EpisodeNumber: ep.EpisodeNumber,
+						Name:          ep.Name,
+						AirDate:       ep.AirDate,
+						StillPath:     ep.StillPath,
+					})
 					break
 				}
-			}
-
-			if appeared {
-				episodes = append(episodes, PersonEpisodeDetail{
-					EpisodeNumber: ep.EpisodeNumber,
-					Name:          ep.Name,
-					AirDate:       ep.AirDate,
-					StillPath:     ep.StillPath,
-				})
 			}
 		}
 
