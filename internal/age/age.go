@@ -37,6 +37,25 @@ func CalculateAge(birthday, date string) *int {
 	return &age
 }
 
+// CalculateAgeAtEvent returns a person's age at an event, clamped so it never
+// exceeds the age they actually reached. If the person is deceased and the event
+// is after their death, their death date is used. If the person is alive and
+// the event is in the future, today's date is used.
+func CalculateAgeAtEvent(birthday, deathday, eventDate, today string) *int {
+	capDate := today
+	if deathday != "" {
+		capDate = deathday
+	}
+
+	cap, err1 := time.Parse(time.DateOnly, capDate)
+	event, err2 := time.Parse(time.DateOnly, eventDate)
+	if err1 == nil && err2 == nil && event.After(cap) {
+		return CalculateAge(birthday, capDate)
+	}
+
+	return CalculateAge(birthday, eventDate)
+}
+
 // CalculateAgeRange calculates the age range for a person across a date span.
 // Returns a string like "25-32" or just "25" if start and end are the same.
 // Returns empty string if birthday is empty or invalid.

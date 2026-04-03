@@ -222,7 +222,7 @@ func (h *Handlers) enrichCreditsWithAges(ctx context.Context, credits *Credits, 
 			if useRange {
 				persons[i].AgeRange = age.CalculateAgeRange(dates.DateOfBirth, startDate, endDate)
 			} else {
-				persons[i].AgeAtRelease = age.CalculateAge(dates.DateOfBirth, startDate)
+				persons[i].AgeAtRelease = age.CalculateAgeAtEvent(dates.DateOfBirth, dates.DateOfDeath, startDate, nowTime)
 			}
 		}
 	}
