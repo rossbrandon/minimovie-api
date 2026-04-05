@@ -1,4 +1,4 @@
-.PHONY: start watch build sync build-sync fmt local-up local-down
+.PHONY: start watch build sync build-sync fmt lint local-up local-down
 
 start:
 	@set -a && source .env && go run cmd/api/main.go
@@ -17,6 +17,9 @@ build-sync:
 
 fmt:
 	go fmt ./...
+
+lint:
+	golangci-lint run ./...
 
 local-up:
 	docker compose -f local-development/docker-compose.yml up -d

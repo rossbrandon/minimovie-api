@@ -21,6 +21,12 @@ type Config struct {
 	MaxTmdbFetchPerRequest int
 	OTelEnabled            bool
 	CacheMaxAge            int
+	AnthropicApiKey        string
+	AugurModel             string
+	AugurMaxTokens         int
+	AugurMaxRetries        int
+	AugurMinConfidence     float64
+	AugurTimeout           int
 }
 
 const defaultPort = "8080"
@@ -30,6 +36,11 @@ const defaultTmdbBaseUrl = "https://api.themoviedb.org/3"
 const defaultTmdbTimeout int = 10
 const defaultMaxTmdbFetchPerRequest int = 10
 const defaultCacheMaxAge int = 3600
+const defaultAugurModel = "claude-sonnet-4-6"
+const defaultAugurMaxTokens int = 4096
+const defaultAugurMaxRetries int = 1
+const defaultAugurMinConfidence float64 = 0.65
+const defaultAugurTimeout int = 30
 
 func Load() (*Config, error) {
 	tmdbAccessToken := os.Getenv("TMDB_ACCESS_TOKEN")
@@ -114,6 +125,53 @@ func Load() (*Config, error) {
 		cacheMaxAge = cacheMaxAgeInt
 	}
 
+	anthropicApiKey := os.Getenv("ANTHROPIC_API_KEY")
+
+	augurModel := os.Getenv("AUGUR_MODEL")
+	if augurModel == "" {
+		augurModel = defaultAugurModel
+	}
+
+	augurMaxTokensStr := os.Getenv("AUGUR_MAX_TOKENS")
+	augurMaxTokens := defaultAugurMaxTokens
+	if augurMaxTokensStr != "" {
+		augurMaxTokensInt, err := strconv.Atoi(augurMaxTokensStr)
+		if err != nil {
+			return nil, errors.New("AUGUR_MAX_TOKENS is not a valid integer")
+		}
+		augurMaxTokens = augurMaxTokensInt
+	}
+
+	augurMaxRetriesStr := os.Getenv("AUGUR_MAX_RETRIES")
+	augurMaxRetries := defaultAugurMaxRetries
+	if augurMaxRetriesStr != "" {
+		augurMaxRetriesInt, err := strconv.Atoi(augurMaxRetriesStr)
+		if err != nil {
+			return nil, errors.New("AUGUR_MAX_RETRIES is not a valid integer")
+		}
+		augurMaxRetries = augurMaxRetriesInt
+	}
+
+	augurMinConfidenceStr := os.Getenv("AUGUR_MIN_CONFIDENCE")
+	augurMinConfidence := defaultAugurMinConfidence
+	if augurMinConfidenceStr != "" {
+		augurMinConfidenceFloat, err := strconv.ParseFloat(augurMinConfidenceStr, 64)
+		if err != nil {
+			return nil, errors.New("AUGUR_MIN_CONFIDENCE is not a valid float")
+		}
+		augurMinConfidence = augurMinConfidenceFloat
+	}
+
+	augurTimeoutStr := os.Getenv("AUGUR_TIMEOUT")
+	augurTimeout := defaultAugurTimeout
+	if augurTimeoutStr != "" {
+		augurTimeoutInt, err := strconv.Atoi(augurTimeoutStr)
+		if err != nil {
+			return nil, errors.New("AUGUR_TIMEOUT is not a valid integer")
+		}
+		augurTimeout = augurTimeoutInt
+	}
+
 	return &Config{
 		Port:                   port,
 		Timeout:                timeout,
@@ -126,5 +184,11 @@ func Load() (*Config, error) {
 		MaxTmdbFetchPerRequest: maxTmdbFetchPerRequest,
 		OTelEnabled:            otelEnabled,
 		CacheMaxAge:            cacheMaxAge,
+		AnthropicApiKey:        anthropicApiKey,
+		AugurModel:             augurModel,
+		AugurMaxTokens:         augurMaxTokens,
+		AugurMaxRetries:        augurMaxRetries,
+		AugurMinConfidence:     augurMinConfidence,
+		AugurTimeout:           augurTimeout,
 	}, nil
 }

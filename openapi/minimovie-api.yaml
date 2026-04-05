@@ -322,6 +322,108 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /series/{seriesId}/person/{personId}/credits:
+    get:
+      summary: Get person's credits within a series
+      description: Retrieve a person's episode-level appearance breakdown across all seasons of a TV series
+      operationId: getPersonSeriesCredits
+      parameters:
+        - name: seriesId
+          in: path
+          required: true
+          description: TMDB series ID
+          schema:
+            type: integer
+        - name: personId
+          in: path
+          required: true
+          description: TMDB person ID
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Person's series credits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonSeriesCredits"
+        "400":
+          description: Invalid series or person ID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Series or person not found in credits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /interesting/person/{id}:
+    get:
+      summary: Get interesting info about a person
+      description: >-
+        Retrieve LLM-enriched interesting information about a person such as net worth
+        and family relationships.
+      operationId: getPersonInterestingInfo
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: TMDB person ID
+          schema:
+            type: integer
+        - name: name
+          in: query
+          required: true
+          description: Person's name (used as context for the LLM query)
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Person interesting info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonInterestingInfo"
+        "400":
+          description: Invalid person ID or missing name parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error (LLM query failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Service unavailable (Augur enrichment is disabled)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -856,3 +958,122 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Person"
+
+    PersonSeriesCredits:
+      type: object
+      properties:
+        person:
+          $ref: "#/components/schemas/PersonSummary"
+        series:
+          $ref: "#/components/schemas/SeriesSummary"
+        totalEpisodeCount:
+          type: integer
+          description: Total number of episodes the person appeared in across all seasons
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/RoleSummary"
+        seasons:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonSeasonDetail"
+
+    PersonSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        photoPath:
+          type: string
+
+    SeriesSummary:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        posterPath:
+          type: string
+
+    RoleSummary:
+      type: object
+      properties:
+        character:
+          type: string
+
+    PersonSeasonDetail:
+      type: object
+      properties:
+        seasonNumber:
+          type: integer
+        name:
+          type: string
+        airDate:
+          type: string
+          format: date
+        totalEpisodes:
+          type: integer
+          description: Total number of episodes in this season
+        episodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/PersonEpisodeDetail"
+
+    PersonEpisodeDetail:
+      type: object
+      properties:
+        episodeNumber:
+          type: integer
+        name:
+          type: string
+        airDate:
+          type: string
+          format: date
+        stillPath:
+          type: string
+
+    PersonInterestingInfo:
+      type: object
+      properties:
+        netWorth:
+          $ref: "#/components/schemas/EnrichedField"
+        parents:
+          $ref: "#/components/schemas/EnrichedField"
+        siblings:
+          $ref: "#/components/schemas/EnrichedField"
+        children:
+          $ref: "#/components/schemas/EnrichedField"
+        spouse:
+          $ref: "#/components/schemas/EnrichedField"
+        notes:
+          type: string
+          description: LLM commentary or "No data available" if all fields were filtered by confidence threshold
+
+    EnrichedField:
+      type: object
+      description: A field enriched by augur-go with confidence score and source attribution
+      properties:
+        value:
+          description: The enriched value (string, number, or array depending on the field)
+        confidence:
+          type: number
+          format: float
+          description: Confidence score from 0 to 1 (fields below the configured threshold are omitted)
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/EnrichedSource"
+
+    EnrichedSource:
+      type: object
+      properties:
+        title:
+          type: string
+          description: Name of the source
+        url:
+          type: string
+          format: uri
+          description: URL of the source

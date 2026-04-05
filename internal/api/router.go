@@ -22,7 +22,6 @@ func NewRouter(h *handlers.Handlers, config *config.Config) *chi.Mux {
 	r.Use(metrics.Middleware)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(time.Duration(config.Timeout) * time.Second))
 	r.Use(jwtauth.Verifier(tokenAuth))
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"https://minimovie.info", "https://localhost:4321", "http://localhost:4321"},
@@ -34,6 +33,7 @@ func NewRouter(h *handlers.Handlers, config *config.Config) *chi.Mux {
 
 	// Authenticated routes
 	r.Group(func(r chi.Router) {
+		r.Use(middleware.Timeout(time.Duration(config.Timeout) * time.Second))
 		r.Use(jwtauth.Verifier(tokenAuth))
 		r.Use(jwtauth.Authenticator(tokenAuth))
 
@@ -53,6 +53,16 @@ func NewRouter(h *handlers.Handlers, config *config.Config) *chi.Mux {
 		r.Get("/people/{id}", h.GetPerson)
 	})
 
+	// Authenticated routes with longer timeout for LLM-backed enrichment
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.Timeout(time.Duration(config.AugurTimeout) * time.Second))
+		r.Use(jwtauth.Verifier(tokenAuth))
+		r.Use(jwtauth.Authenticator(tokenAuth))
+
+		// Interesting Info
+		r.Get("/interesting/person/{id}", h.GetPersonInterestingInfo)
+	})
+
 	// Unauthenticated routes
 	r.Group(func(r chi.Router) {
 		r.Get("/ping", Ping)
@@ -63,5 +73,5 @@ func NewRouter(h *handlers.Handlers, config *config.Config) *chi.Mux {
 
 func Ping(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("pong"))
+	_, _ = w.Write([]byte("pong"))
 }

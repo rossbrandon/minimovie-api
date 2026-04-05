@@ -8,6 +8,7 @@ import (
 	"github.com/rossbrandon/minimovie-api/internal/age"
 	"github.com/rossbrandon/minimovie-api/internal/api"
 	"github.com/rossbrandon/minimovie-api/internal/api/handlers"
+	"github.com/rossbrandon/minimovie-api/internal/augur"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/metrics"
 	"github.com/rossbrandon/minimovie-api/internal/store"
@@ -39,7 +40,7 @@ func main() {
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to initialize metrics, continuing without")
 	} else {
-		defer metricsShutdown(ctx)
+		defer func() { _ = metricsShutdown(ctx) }()
 	}
 
 	// Initialize database connection
@@ -74,9 +75,26 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create age resolver")
 	}
 
+	// Initialize interesting info enrichment
+	interestingInfoStore := store.NewInterestingInfoStore(pool)
+
+	var augurResolver *augur.Resolver
+	if cfg.AnthropicApiKey != "" {
+		augurResolver = augur.New(interestingInfoStore, augur.Config{
+			ApiKey:        cfg.AnthropicApiKey,
+			Model:         cfg.AugurModel,
+			MaxTokens:     cfg.AugurMaxTokens,
+			MaxRetries:    cfg.AugurMaxRetries,
+			MinConfidence: cfg.AugurMinConfidence,
+		})
+		log.Info().Msg("Augur enrichment enabled")
+	} else {
+		log.Warn().Msg("ANTHROPIC_API_KEY not set, augur enrichment disabled")
+	}
+
 	// Initialize API server
 	httputil.DefaultCacheMaxAge = cfg.CacheMaxAge
-	h := handlers.NewHandlers(tmdbClient, ageResolver, seasonCastTiered)
+	h := handlers.NewHandlers(tmdbClient, ageResolver, seasonCastTiered, augurResolver)
 
 	r := api.NewRouter(h, cfg)
 	log.Info().Msg("Server is listening on port " + cfg.Port)

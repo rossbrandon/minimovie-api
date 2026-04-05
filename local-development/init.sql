@@ -38,3 +38,14 @@ create table if not exists season_cast_cache (
 );
 
 create index if not exists idx_season_cast_cache_expires on season_cast_cache (expires_at);
+
+create table if not exists interesting_info (
+    entity_type text not null,
+    entity_id   integer not null,
+    name        text not null,
+    data        jsonb not null,
+    fetched_at  timestamptz not null default now(),
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz not null default now(),
+    primary key (entity_type, entity_id)
+);
