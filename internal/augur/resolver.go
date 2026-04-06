@@ -39,7 +39,7 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 	log.Info().Int("person_id", personID).Str("name", name).Msg("fetching person insights from augur")
 
 	resp, err := augurlib.Query[personInsights](ctx, r.client, &augurlib.Request{
-		Query: fmt.Sprintf("Net worth, family relationships, and one interesting fact for %s", name),
+		Query: fmt.Sprintf("Net worth, family relationships, and one interesting fact for the actor/actress %s", name),
 		Context: "Focus on USD net worth and immediate family (parents, siblings, children, spouse). " +
 			"The interesting fact should be something entertaining or surprising about the person. Keep it family friendly.",
 	})
