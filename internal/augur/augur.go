@@ -66,10 +66,11 @@ type EnrichedField struct {
 }
 
 type PersonInterestingInfo struct {
-	NetWorth *EnrichedField `json:"netWorth,omitempty"`
-	Parents  *EnrichedField `json:"parents,omitempty"`
-	Siblings *EnrichedField `json:"siblings,omitempty"`
-	Children *EnrichedField `json:"children,omitempty"`
-	Spouse   *EnrichedField `json:"spouse,omitempty"`
-	Notes    string         `json:"notes"`
+	NetWorth        *EnrichedField `json:"netWorth,omitempty"`
+	Parents         *EnrichedField `json:"parents,omitempty"`
+	Siblings        *EnrichedField `json:"siblings,omitempty"`
+	Children        *EnrichedField `json:"children,omitempty"`
+	Spouse          *EnrichedField `json:"spouse,omitempty"`
+	InterestingFact *EnrichedField `json:"interestingFact,omitempty"`
+	Notes           string         `json:"notes"`
 }

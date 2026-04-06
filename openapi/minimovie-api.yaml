@@ -471,7 +471,7 @@ components:
           type: string
         overview:
           type: string
-        posterUrl:
+        posterPath:
           type: string
         releaseDate:
           type: string
@@ -500,7 +500,7 @@ components:
           type: array
           items:
             type: string
-        posterUrl:
+        posterPath:
           type: string
         status:
           type: string
@@ -551,7 +551,7 @@ components:
           type: string
         overview:
           type: string
-        posterUrl:
+        posterPath:
           type: string
         parts:
           type: array
@@ -567,7 +567,7 @@ components:
           type: string
         overview:
           type: string
-        posterUrl:
+        posterPath:
           type: string
         releaseDate:
           type: string
@@ -591,7 +591,7 @@ components:
           type: array
           items:
             type: string
-        posterUrl:
+        posterPath:
           type: string
         status:
           type: string
@@ -659,7 +659,7 @@ components:
           type: string
         overview:
           type: string
-        posterUrl:
+        posterPath:
           type: string
         seasonNumber:
           type: integer
@@ -697,7 +697,7 @@ components:
         runtime:
           type: integer
           description: Runtime in minutes
-        stillUrl:
+        stillPath:
           type: string
         voteAverage:
           type: number
@@ -722,17 +722,13 @@ components:
         runtime:
           type: integer
           description: Runtime in minutes
-        stillUrl:
+        stillPath:
           type: string
         voteAverage:
           type: number
           format: float
         voteCount:
           type: integer
-        guestStars:
-          type: array
-          items:
-            $ref: "#/components/schemas/Person"
         credits:
           $ref: "#/components/schemas/Credits"
 
@@ -764,7 +760,7 @@ components:
             - Not specified
         placeOfBirth:
           type: string
-        photoUrl:
+        photoPath:
           type: string
         knownFor:
           type: string
@@ -789,7 +785,7 @@ components:
           type: integer
         title:
           type: string
-        posterUrl:
+        posterPath:
           type: string
         releaseDate:
           type: string
@@ -806,6 +802,9 @@ components:
         voteAverage:
           type: number
           description: Average user rating (0-10) from TMDB.
+        voteCount:
+          type: integer
+          description: Total number of user votes on TMDB.
         episodeCount:
           type: integer
           description: Number of episodes the person appeared in or worked on (TV series only).
@@ -822,7 +821,7 @@ components:
           type: integer
         name:
           type: string
-        photoUrl:
+        photoPath:
           type: string
         role:
           type: string
@@ -856,7 +855,7 @@ components:
           type: integer
         name:
           type: string
-        logoUrl:
+        logoPath:
           type: string
         originCountry:
           type: string
@@ -877,7 +876,7 @@ components:
         airDate:
           type: string
           format: date
-        posterUrl:
+        posterPath:
           type: string
         voteAverage:
           type: number
@@ -912,7 +911,7 @@ components:
       properties:
         name:
           type: string
-        logoUrl:
+        logoPath:
           type: string
 
     Credits:

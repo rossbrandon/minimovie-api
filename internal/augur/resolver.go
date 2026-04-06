@@ -10,11 +10,12 @@ import (
 )
 
 type personInsights struct {
-	NetWorth int64    `json:"netWorth" augur:"required,desc:Estimated net worth in USD"`
-	Parents  []string `json:"parents"  augur:"desc:Names of biological or adoptive parents"`
-	Siblings []string `json:"siblings" augur:"desc:Names of known siblings"`
-	Children []string `json:"children" augur:"desc:Names of known children"`
-	Spouse   string   `json:"spouse"   augur:"desc:Name of current or most recent spouse or partner"`
+	NetWorth        int64    `json:"netWorth" augur:"required,desc:Estimated net worth in USD"`
+	Parents         []string `json:"parents"  augur:"desc:Names of biological or adoptive parents"`
+	Siblings        []string `json:"siblings" augur:"desc:Names of known siblings"`
+	Children        []string `json:"children" augur:"desc:Names of known children"`
+	Spouse          string   `json:"spouse"   augur:"desc:Name of current or most recent spouse or partner"`
+	InterestingFact string   `json:"interestingFact" augur:"desc:One interesting fact about the person"`
 }
 
 type cachedResult struct {
@@ -38,8 +39,9 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 	log.Info().Int("person_id", personID).Str("name", name).Msg("fetching person insights from augur")
 
 	resp, err := augurlib.Query[personInsights](ctx, r.client, &augurlib.Request{
-		Query:   fmt.Sprintf("Net worth and family relationships for %s", name),
-		Context: "Focus on USD net worth and immediate family (parents, siblings, children, spouse)",
+		Query: fmt.Sprintf("Net worth, family relationships, and one interesting fact for %s", name),
+		Context: "Focus on USD net worth and immediate family (parents, siblings, children, spouse). " +
+			"The interesting fact should be something entertaining or surprising about the person. Keep it family friendly.",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("augur query failed: %w", err)
@@ -104,8 +106,9 @@ func (r *Resolver) buildPersonInterestingInfo(cached *cachedResult) *PersonInter
 	info.Siblings = r.enrichField("siblings", cached.Data.Siblings, cached.Meta)
 	info.Children = r.enrichField("children", cached.Data.Children, cached.Meta)
 	info.Spouse = r.enrichField("spouse", cached.Data.Spouse, cached.Meta)
+	info.InterestingFact = r.enrichField("interestingFact", cached.Data.InterestingFact, cached.Meta)
 
-	if info.NetWorth == nil && info.Parents == nil && info.Siblings == nil && info.Children == nil && info.Spouse == nil {
+	if info.NetWorth == nil && info.Parents == nil && info.Siblings == nil && info.Children == nil && info.Spouse == nil && info.InterestingFact == nil {
 		info.Notes = "No data available"
 	}
 
