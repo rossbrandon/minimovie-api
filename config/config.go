@@ -40,7 +40,7 @@ const defaultAugurModel = "claude-sonnet-4-6"
 const defaultAugurMaxTokens int = 4096
 const defaultAugurMaxRetries int = 1
 const defaultAugurMinConfidence float64 = 0.65
-const defaultAugurTimeout int = 30
+const defaultAugurTimeout int = 60
 
 func Load() (*Config, error) {
 	tmdbAccessToken := os.Getenv("TMDB_ACCESS_TOKEN")

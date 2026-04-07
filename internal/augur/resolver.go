@@ -24,6 +24,8 @@ type cachedResult struct {
 	Notes string                `json:"notes,omitempty"`
 }
 
+var maxSearches = 2
+
 func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name string, bypassCache bool) (*PersonInterestingInfo, error) {
 	if !bypassCache {
 		data, _, err := r.store.Get(ctx, "person", personID)
@@ -42,6 +44,11 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 		Query: fmt.Sprintf("Net worth, family relationships, and one interesting fact for the actor/actress %s", name),
 		Context: "Focus on USD net worth and immediate family (parents, siblings, children, spouse). " +
 			"The interesting fact should be something entertaining or surprising about the person. Keep it family friendly.",
+		Options: &augurlib.QueryOptions{
+			Sources: &augurlib.SourceConfig{
+				MaxSearches: &maxSearches,
+			},
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("augur query failed: %w", err)
