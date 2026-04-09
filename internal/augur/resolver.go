@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	augurlib "github.com/rossbrandon/augur-go"
+	augur "github.com/rossbrandon/augur-go"
 	"github.com/rs/zerolog/log"
 )
 
@@ -24,8 +24,6 @@ type cachedResult struct {
 	Notes string                `json:"notes,omitempty"`
 }
 
-var maxSearches = 2
-
 func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name string, bypassCache bool) (*PersonInterestingInfo, error) {
 	if !bypassCache {
 		data, _, err := r.store.Get(ctx, "person", personID)
@@ -40,13 +38,13 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 
 	log.Info().Int("person_id", personID).Str("name", name).Msg("fetching person insights from augur")
 
-	resp, err := augurlib.Query[personInsights](ctx, r.client, &augurlib.Request{
+	resp, err := augur.Query[personInsights](ctx, r.client, &augur.Request{
 		Query: fmt.Sprintf("Net worth, family relationships, and one interesting fact for the actor/actress %s", name),
 		Context: "Focus on USD net worth and immediate family (parents, siblings, children, spouse). " +
 			"The interesting fact should be something entertaining or surprising about the person. Keep it family friendly.",
-		Options: &augurlib.QueryOptions{
-			Sources: &augurlib.SourceConfig{
-				MaxSearches: &maxSearches,
+		Options: &augur.QueryOptions{
+			Sources: &augur.SourceConfig{
+				MaxSearches: augur.Int(2),
 			},
 		},
 	})
@@ -77,7 +75,7 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 	return r.buildPersonInterestingInfo(&cached), nil
 }
 
-func buildMeta(augurMeta map[string]*augurlib.FieldMeta) map[string]*FieldMeta {
+func buildMeta(augurMeta map[string]*augur.FieldMeta) map[string]*FieldMeta {
 	if augurMeta == nil {
 		return nil
 	}

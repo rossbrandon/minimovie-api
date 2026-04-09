@@ -1,7 +1,7 @@
 package augur
 
 import (
-	augurlib "github.com/rossbrandon/augur-go"
+	augur "github.com/rossbrandon/augur-go"
 	"github.com/rossbrandon/augur-go/providers/claude"
 
 	"github.com/rossbrandon/minimovie-api/internal/store"
@@ -16,7 +16,7 @@ type Config struct {
 }
 
 type Resolver struct {
-	client        *augurlib.Client
+	client        *augur.Client
 	store         *store.InterestingInfoStore
 	minConfidence float64
 }
@@ -55,18 +55,18 @@ func New(infoStore *store.InterestingInfoStore, cfg Config) *Resolver {
 
 	provider := claude.NewProvider(cfg.ApiKey)
 
-	var opts []augurlib.Option
+	var opts []augur.Option
 	if cfg.Model != "" {
-		opts = append(opts, augurlib.WithModel(cfg.Model))
+		opts = append(opts, augur.WithModel(cfg.Model))
 	}
 	if cfg.MaxTokens > 0 {
-		opts = append(opts, augurlib.WithMaxTokens(cfg.MaxTokens))
+		opts = append(opts, augur.WithMaxTokens(cfg.MaxTokens))
 	}
 	if cfg.MaxRetries > 0 {
-		opts = append(opts, augurlib.WithMaxRetries(cfg.MaxRetries))
+		opts = append(opts, augur.WithMaxRetries(cfg.MaxRetries))
 	}
 
-	client := augurlib.New(provider, opts...)
+	client := augur.New(provider, opts...)
 
 	return &Resolver{
 		client:        client,

@@ -8,7 +8,7 @@ require (
 	github.com/go-chi/cors v1.2.2
 	github.com/go-chi/jwtauth/v5 v5.4.0
 	github.com/jackc/pgx/v5 v5.8.0
-	github.com/rossbrandon/augur-go v0.3.0
+	github.com/rossbrandon/augur-go v0.4.0
 	github.com/rs/zerolog v1.34.0
 	go.opentelemetry.io/otel v1.42.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp v1.42.0
