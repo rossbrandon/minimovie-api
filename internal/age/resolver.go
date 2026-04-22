@@ -17,6 +17,8 @@ const (
 	PriorityTopCast  = 3
 	PriorityCast     = 4
 	PriorityCrew     = 5
+
+	asyncPersistTimeout = 5 * time.Second
 )
 
 type PersonRef struct {
@@ -223,15 +225,19 @@ func (r *Resolver) persistFetched(ctx context.Context, fetched map[int]store.Per
 		return
 	}
 
-	start := time.Now()
-
-	if err := r.personDB.UpsertPersonBatch(ctx, fetched, nameMap); err != nil {
-		log.Error().Err(err).Msg("failed to batch upsert people to database")
-	}
-
 	for id, dates := range fetched {
 		r.cache.Set(id, dates.DateOfBirth, dates.DateOfDeath)
 		result[id] = dates
 	}
-	log.Info().Dur("duration_ms", time.Since(start)).Int("fetched_count", len(fetched)).Msg("persisted fetched people to database and cache")
+
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), asyncPersistTimeout)
+		defer cancel()
+
+		start := time.Now()
+		if err := r.personDB.UpsertPersonBatch(bgCtx, fetched, nameMap); err != nil {
+			log.Error().Err(err).Msg("failed to batch upsert people to database")
+		}
+		log.Info().Dur("duration_ms", time.Since(start)).Int("fetched_count", len(fetched)).Msg("persisted fetched people to database")
+	}()
 }
