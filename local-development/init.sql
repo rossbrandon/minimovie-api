@@ -11,6 +11,8 @@ create table if not exists people (
 
 create index if not exists idx_people_fetched on people(fetched);
 
+create index if not exists idx_people_dates_covering on people (id) include (date_of_birth, date_of_death, popularity, fetched);
+
 create table if not exists sync_job_status (
     id serial primary key,
     type text not null,

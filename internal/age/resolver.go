@@ -19,6 +19,7 @@ const (
 	PriorityCrew     = 5
 
 	asyncPersistTimeout = 5 * time.Second
+	dbQueryTimeout      = 3 * time.Second
 )
 
 type PersonRef struct {
@@ -130,9 +131,12 @@ func (r *Resolver) getPeopleFromDb(ctx context.Context, misses []PersonRef, resu
 		ids[i] = p.ID
 	}
 
-	dbResults, err := r.personDB.GetPeople(ctx, ids)
+	dbCtx, cancel := context.WithTimeout(ctx, dbQueryTimeout)
+	defer cancel()
+
+	dbResults, err := r.personDB.GetPeople(dbCtx, ids)
 	if err != nil {
-		log.Error().Err(err).Msg("failed to query database for people")
+		log.Error().Err(err).Int("misses_count", len(misses)).Msg("failed to query database for people")
 		return make(map[int]store.PersonDates)
 	}
 
