@@ -4,10 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	augur "github.com/rossbrandon/augur-go"
+	"github.com/rossbrandon/minimovie-api/internal/metrics"
 	"github.com/rs/zerolog/log"
 )
+
+const augurQueryTypePerson = "person"
 
 type personInsights struct {
 	NetWorth        int64    `json:"netWorth" augur:"required,desc:Estimated net worth in USD"`
@@ -30,14 +34,21 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 		if err == nil && data != nil {
 			var cached cachedResult
 			if err := json.Unmarshal(data, &cached); err == nil && cached.Data != nil {
+				if metrics.M != nil {
+					metrics.M.RecordCacheHit(ctx, "interesting_info")
+				}
 				log.Info().Int("person_id", personID).Msg("serving person insights from cache")
 				return r.buildPersonInterestingInfo(&cached), nil
 			}
+		}
+		if metrics.M != nil {
+			metrics.M.RecordCacheMiss(ctx, "interesting_info")
 		}
 	}
 
 	log.Info().Int("person_id", personID).Str("name", name).Msg("fetching person insights from augur")
 
+	start := time.Now()
 	resp, err := augur.Query[personInsights](ctx, r.client, &augur.Request{
 		Query: fmt.Sprintf("Net worth, family relationships, and one interesting fact for the actor/actress %s", name),
 		Context: "Focus on USD net worth and immediate family (parents, siblings, children, spouse). " +
@@ -48,12 +59,43 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 			},
 		},
 	})
+	duration := time.Since(start)
+
 	if err != nil {
+		if metrics.M != nil {
+			metrics.M.RecordAugurRequest(ctx, augurQueryTypePerson, "error", duration)
+		}
 		return nil, fmt.Errorf("augur query failed: %w", err)
 	}
 
 	if resp.Data == nil {
+		if metrics.M != nil {
+			metrics.M.RecordAugurRequest(ctx, augurQueryTypePerson, "empty", duration)
+		}
 		return nil, fmt.Errorf("augur returned no data for person %d (%s)", personID, name)
+	}
+
+	if metrics.M != nil {
+		metrics.M.RecordAugurRequest(ctx, augurQueryTypePerson, "success", duration)
+		if resp.Usage != nil {
+			metrics.M.RecordAugurUsage(
+				ctx,
+				augurQueryTypePerson,
+				resp.Model,
+				int64(resp.Usage.InputTokens),
+				int64(resp.Usage.OutputTokens),
+			)
+		}
+		for fieldName, fm := range resp.Meta {
+			if fm == nil {
+				continue
+			}
+			outcome := "returned"
+			if fm.Confidence < r.minConfidence {
+				outcome = "rejected"
+			}
+			metrics.M.RecordAugurField(ctx, fieldName, outcome, fm.Confidence)
+		}
 	}
 
 	meta := buildMeta(resp.Meta)
@@ -69,6 +111,8 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 	} else {
 		if setErr := r.store.Set(ctx, "person", personID, name, jsonData); setErr != nil {
 			log.Error().Err(setErr).Int("person_id", personID).Msg("failed to persist interesting info")
+		} else if metrics.M != nil {
+			metrics.M.RecordCacheWrite(ctx, "interesting_info")
 		}
 	}
 

@@ -28,6 +28,12 @@ type Metrics struct {
 
 	CacheOperationsTotal metric.Int64Counter
 	DbRowsPurgedTotal    metric.Int64Counter
+
+	AugurRequestsTotal   metric.Int64Counter
+	AugurRequestDuration metric.Float64Histogram
+	AugurFieldsTotal     metric.Int64Counter
+	AugurFieldConfidence metric.Float64Histogram
+	AugurTokensTotal     metric.Int64Counter
 }
 
 type Config struct {
@@ -136,6 +142,50 @@ func initMetrics(meter metric.Meter) (*Metrics, error) {
 		return nil, err
 	}
 
+	m.AugurRequestsTotal, err = meter.Int64Counter("augur_requests_total",
+		metric.WithDescription("Total number of Augur LLM enrichment requests"),
+		metric.WithUnit("{request}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Expected Augur response time is 5-30s; buckets concentrate resolution in that band
+	// with a short low-end runway (fast failures) and a small tail for outliers.
+	m.AugurRequestDuration, err = meter.Float64Histogram("augur_request_duration_seconds",
+		metric.WithDescription("Augur LLM enrichment request duration in seconds"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(1, 2.5, 5, 7.5, 10, 12.5, 15, 20, 25, 30, 45, 60),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.AugurFieldsTotal, err = meter.Int64Counter("augur_fields_total",
+		metric.WithDescription("Total number of Augur fields by outcome (returned vs rejected by confidence threshold)"),
+		metric.WithUnit("{field}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.AugurFieldConfidence, err = meter.Float64Histogram("augur_field_confidence",
+		metric.WithDescription("Confidence score returned by Augur for individual enriched fields (0..1)"),
+		metric.WithUnit("{score}"),
+		metric.WithExplicitBucketBoundaries(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.AugurTokensTotal, err = meter.Int64Counter("augur_tokens_total",
+		metric.WithDescription("Total tokens consumed by Augur LLM calls, split by input vs output and model"),
+		metric.WithUnit("{token}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return m, nil
 }
 
@@ -204,6 +254,43 @@ func (m *Metrics) RecordDbPurge(ctx context.Context, table string, count int64) 
 	m.DbRowsPurgedTotal.Add(ctx, count, metric.WithAttributes(
 		attribute.String("table", table),
 	))
+}
+
+func (m *Metrics) RecordAugurRequest(ctx context.Context, queryType, status string, duration time.Duration) {
+	m.AugurRequestsTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("query_type", queryType),
+		attribute.String("status", status),
+	))
+	m.AugurRequestDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(
+		attribute.String("query_type", queryType),
+	))
+}
+
+func (m *Metrics) RecordAugurField(ctx context.Context, field, outcome string, confidence float64) {
+	m.AugurFieldsTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("field", field),
+		attribute.String("outcome", outcome),
+	))
+	m.AugurFieldConfidence.Record(ctx, confidence, metric.WithAttributes(
+		attribute.String("field", field),
+	))
+}
+
+func (m *Metrics) RecordAugurUsage(ctx context.Context, queryType, model string, inputTokens, outputTokens int64) {
+	if inputTokens > 0 {
+		m.AugurTokensTotal.Add(ctx, inputTokens, metric.WithAttributes(
+			attribute.String("query_type", queryType),
+			attribute.String("model", model),
+			attribute.String("kind", "input"),
+		))
+	}
+	if outputTokens > 0 {
+		m.AugurTokensTotal.Add(ctx, outputTokens, metric.WithAttributes(
+			attribute.String("query_type", queryType),
+			attribute.String("model", model),
+			attribute.String("kind", "output"),
+		))
+	}
 }
 
 func TrackDbDuration(ctx context.Context, operation string) func() {
