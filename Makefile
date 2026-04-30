@@ -1,4 +1,4 @@
-.PHONY: start watch build sync build-sync fmt lint local-up local-down
+.PHONY: start watch build sync build-sync fmt lint test test-cover local-up local-down
 
 start:
 	@set -a && source .env && go run cmd/api/main.go
@@ -20,6 +20,12 @@ fmt:
 
 lint:
 	golangci-lint run ./...
+
+test:
+	go test ./...
+
+test-cover:
+	go test -coverprofile=coverage.out ./... && go tool cover -html=coverage.out
 
 local-up:
 	docker compose -f local-development/docker-compose.yml up -d

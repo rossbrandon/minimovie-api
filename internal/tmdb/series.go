@@ -86,6 +86,7 @@ type SeasonSummaryEpisode struct {
 	EpisodeNumber int          `json:"episode_number"`
 	SeasonNumber  int          `json:"season_number"`
 	AirDate       string       `json:"air_date"`
+	Runtime       int          `json:"runtime"`
 	StillPath     string       `json:"still_path"`
 	GuestStars    []CastMember `json:"guest_stars"`
 }

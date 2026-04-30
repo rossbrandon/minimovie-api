@@ -34,6 +34,9 @@ func main() {
 	// Register all purgeable stores — add new cache stores here as they're created
 	stores := []store.Purgeable{
 		store.NewSeasonCastPostgresStore(pool),
+		store.NewSessionStore(pool),
+		store.NewAuthCodeStore(pool, nil),
+		store.NewNotificationSeenStore(pool),
 	}
 
 	today := time.Now().UTC().Format(time.DateOnly)
@@ -47,7 +50,7 @@ func main() {
 	var jobErr error
 
 	for _, s := range stores {
-		count, err := s.PurgeExpired(ctx)
+		count, err := s.DeleteExpired(ctx)
 		if err != nil {
 			log.Error().Err(err).Str("table", s.TableName()).Msg("Failed to purge expired records")
 			jobErr = err

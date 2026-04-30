@@ -372,6 +372,902 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /auth/{provider}:
+    get:
+      summary: Begin OAuth login
+      description: >-
+        Redirects the user to the chosen OAuth provider's authorization page.
+      operationId: beginAuth
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: OAuth provider name
+          schema:
+            type: string
+            enum:
+              - google
+              - apple
+      responses:
+        "302":
+          description: Redirect to OAuth provider
+        "400":
+          description: Unknown provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/{provider}/callback:
+    get:
+      summary: OAuth callback (GET)
+      description: >-
+        Handles the OAuth provider callback after user authorization.
+        The library verifies state, exchanges the code with PKCE, verifies
+        the ID token signature and claims, then creates or updates the user,
+        generates a session, and redirects to the UI with a one-time auth code.
+      operationId: authCallbackGet
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: OAuth provider name
+          schema:
+            type: string
+            enum:
+              - google
+              - apple
+      responses:
+        "302":
+          description: Redirect to UI with auth code (or error)
+        "400":
+          description: Invalid state or code exchange failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: OAuth callback (POST)
+      description: >-
+        Handles Apple's form_post response mode. Apple sends the authorization
+        response as a POST with form-encoded body. Same logic as the GET callback.
+      operationId: authCallbackPost
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          description: OAuth provider name
+          schema:
+            type: string
+            enum:
+              - apple
+      responses:
+        "302":
+          description: Redirect to UI with auth code (or error)
+        "400":
+          description: Invalid state or code exchange failure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/token:
+    post:
+      summary: Exchange auth code for session token
+      description: >-
+        Exchanges a one-time auth code (received from the OAuth callback redirect)
+        for a raw session token. Requires the guest API key as a Bearer token.
+      operationId: exchangeToken
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TokenRequest"
+      responses:
+        "200":
+          description: Session token returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Invalid request body or missing code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized (invalid guest key)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: Code expired or already exchanged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/session:
+    get:
+      summary: Get current session
+      description: Returns the authenticated user's profile and unseen achievement count
+      operationId: getSession
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Session info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      summary: Log out
+      description: Destroys the current session
+      operationId: logout
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Logged out successfully
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/apple/notifications:
+    post:
+      summary: Apple server-to-server notifications
+      description: >-
+        Receives Apple Sign in with Apple server-to-server event notifications.
+        Validates the JWS payload signature against Apple's JWKS, deduplicates
+        by JTI, and dispatches events (consent-revoked, account-delete) to
+        delete the associated user account.
+      operationId: appleNotifications
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - payload
+              properties:
+                payload:
+                  type: string
+                  description: JWS-signed notification from Apple
+      responses:
+        "200":
+          description: Notification processed
+        "400":
+          description: Invalid or stale payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Invalid signature or claims
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/delete:
+    post:
+      summary: Delete account
+      description: >-
+        Permanently deletes the authenticated user's account and all associated data.
+        Requires a confirmation field set to "delete".
+      operationId: deleteAccount
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeleteAccountRequest"
+      responses:
+        "200":
+          description: Account deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteAccountResponse"
+        "400":
+          description: Missing or incorrect confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/export:
+    post:
+      summary: Export user data
+      description: >-
+        Exports the authenticated user's data as a JSON file download.
+        Rate-limited to one export per day.
+      operationId: exportUserData
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: JSON file download
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: 'attachment; filename="minimovie-data-export.json"'
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportData"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Export limit reached (1 per day)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/watchlist:
+    get:
+      summary: List watchlist
+      description: Returns the user's watchlist items, optionally filtered by status or media type
+      operationId: listWatchlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - want_to_watch
+              - watched
+        - name: media_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - movie
+              - series
+      responses:
+        "200":
+          description: Watchlist items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistListResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Add to watchlist
+      description: Adds a movie or series to the user's watchlist, resolving metadata from TMDB
+      operationId: addToWatchlist
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddWatchlistRequest"
+      responses:
+        "201":
+          description: Item added to watchlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistItem"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Media not found on TMDB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Item already in watchlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Metadata resolution failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/watchlist/check:
+    get:
+      summary: Check if item is in watchlist
+      description: Checks whether a specific media item exists in the user's watchlist
+      operationId: checkWatchlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: media_type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - movie
+              - series
+        - name: media_id
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistCheckResponse"
+        "400":
+          description: Invalid media_id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/watchlist/{id}:
+    patch:
+      summary: Update watchlist item status
+      description: Updates the status of a watchlist item
+      operationId: updateWatchlistStatus
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Watchlist item ID
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWatchlistStatusRequest"
+      responses:
+        "200":
+          description: Updated watchlist item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchlistItem"
+        "400":
+          description: Invalid status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      summary: Remove from watchlist
+      description: Removes an item from the user's watchlist
+      operationId: removeFromWatchlist
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Watchlist item ID
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Item removed
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/progress/{seriesId}:
+    get:
+      summary: Get watch progress for a series
+      description: Returns which episodes the user has watched for a given series
+      operationId: getWatchProgress
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: seriesId
+          in: path
+          required: true
+          description: TMDB series ID
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Watch progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchProgressResponse"
+        "400":
+          description: Invalid seriesId
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/progress:
+    post:
+      summary: Mark episode as watched
+      description: >-
+        Marks a specific episode as watched by creating a watch event.
+        Also updates the associated watchlist item summary.
+      operationId: markEpisodeWatched
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkEpisodeWatchedRequest"
+      responses:
+        "201":
+          description: Episode marked as watched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchEvent"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Episode not found on TMDB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Metadata resolution failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/progress/{id}:
+    delete:
+      summary: Unmark episode
+      description: Removes a watch event, effectively unmarking the episode as watched
+      operationId: unmarkEpisode
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Watch event ID
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Episode unmarked
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/watch-events:
+    get:
+      summary: List watch events
+      description: Returns the user's watch event history with optional filters
+      operationId: listWatchEvents
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: media_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - movie
+              - episode
+              - series
+              - season
+        - name: media_id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: series_id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: dated_only
+          in: query
+          required: false
+          description: Only return events with a watchedAt date
+          schema:
+            type: string
+            enum:
+              - "true"
+        - name: limit
+          in: query
+          required: false
+          description: Max number of events to return (default 100, max 500)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Watch events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchEventListResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      summary: Create watch event
+      description: >-
+        Records a new watch event for a movie, series, or episode.
+        Resolves metadata from TMDB and updates watchlist summary.
+      operationId: createWatchEvent
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWatchEventRequest"
+      responses:
+        "201":
+          description: Watch event created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WatchEvent"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Media not found on TMDB
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Metadata resolution failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/watch-events/{id}:
+    delete:
+      summary: Delete watch event
+      description: Removes a watch event and reconciles the parent watchlist summary.
+      operationId: deleteWatchEvent
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Watch event deleted
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Watch event not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/stats:
+    get:
+      summary: Get user stats
+      description: Returns computed statistics for the authenticated user's watch history
+      operationId: getStats
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: User stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsResult"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/achievements:
+    get:
+      summary: List achievements
+      description: Returns all achievements earned by the authenticated user
+      operationId: getAchievements
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: User achievements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AchievementsResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/achievements/unseen:
+    get:
+      summary: List unseen achievements
+      description: Returns achievements not yet seen by the user
+      operationId: getUnseenAchievements
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Unseen achievements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AchievementsResponse"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/me/achievements/seen:
+    patch:
+      summary: Mark achievements as seen
+      description: Marks all unseen achievements as seen for the authenticated user
+      operationId: markAchievementsSeen
+      security:
+        - sessionCookie: []
+      responses:
+        "204":
+          description: Achievements marked as seen
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /interesting/person/{id}:
     get:
       summary: Get interesting info about a person
@@ -429,7 +1325,12 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: JWT
+      description: Guest API key used for public catalog routes and token exchange
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: mm_session
+      description: Session cookie set after OAuth login (production name is __Host-mm_session)
 
   schemas:
     ErrorResponse:
@@ -1076,3 +1977,444 @@ components:
           type: string
           format: uri
           description: URL of the source
+
+    TokenRequest:
+      type: object
+      required:
+        - code
+      properties:
+        code:
+          type: string
+          description: One-time auth code from the OAuth callback redirect
+
+    TokenResponse:
+      type: object
+      properties:
+        session_token:
+          type: string
+          description: Raw session token to be stored as a cookie
+
+    SessionResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/SessionUser"
+        unseenAchievementCount:
+          type: integer
+
+    SessionUser:
+      type: object
+      properties:
+        id:
+          type: string
+        username:
+          type: string
+          nullable: true
+        givenName:
+          type: string
+          nullable: true
+          description: User's first name from the OAuth provider
+        avatarUrl:
+          type: string
+          nullable: true
+          description: Profile picture URL from the OAuth provider (Google only)
+
+    DeleteAccountRequest:
+      type: object
+      required:
+        - confirm
+      properties:
+        confirm:
+          type: string
+          description: Must be set to "delete" to confirm
+          example: delete
+
+    DeleteAccountResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+          example: true
+
+    ExportData:
+      type: object
+      properties:
+        account:
+          type: object
+          properties:
+            username:
+              type: string
+              nullable: true
+            givenName:
+              type: string
+              nullable: true
+            avatarUrl:
+              type: string
+              nullable: true
+            providers:
+              type: array
+              items:
+                type: string
+            createdAt:
+              type: string
+              format: date-time
+        watchlist:
+          type: array
+          items:
+            $ref: "#/components/schemas/WatchlistItem"
+        watchEvents:
+          type: array
+          items:
+            $ref: "#/components/schemas/WatchEvent"
+        achievements:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserAchievement"
+
+    WatchlistItem:
+      type: object
+      properties:
+        id:
+          type: string
+        mediaType:
+          type: string
+          enum:
+            - movie
+            - series
+        mediaId:
+          type: integer
+        mediaTitle:
+          type: string
+        posterPath:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum:
+            - want_to_watch
+            - watched
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastWatchedAt:
+          type: string
+          format: date-time
+          nullable: true
+        watchCount:
+          type: integer
+        genres:
+          type: array
+          items:
+            type: string
+        runtimeMinutes:
+          type: integer
+          nullable: true
+        voteAverage:
+          type: number
+          format: float
+          nullable: true
+        releaseYear:
+          type: integer
+          nullable: true
+        addedAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    WatchlistListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WatchlistItem"
+        total:
+          type: integer
+
+    WatchlistCheckResponse:
+      type: object
+      properties:
+        exists:
+          type: boolean
+        item:
+          type: object
+          description: Only present when exists is true
+          properties:
+            id:
+              type: string
+            status:
+              type: string
+
+    AddWatchlistRequest:
+      type: object
+      required:
+        - mediaType
+        - mediaId
+        - status
+      properties:
+        mediaType:
+          type: string
+          enum:
+            - movie
+            - series
+        mediaId:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum:
+            - want_to_watch
+            - watched
+
+    UpdateWatchlistStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - want_to_watch
+            - watched
+
+    WatchEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        mediaType:
+          type: string
+          enum:
+            - movie
+            - episode
+            - series
+            - season
+        mediaId:
+          type: integer
+        mediaTitle:
+          type: string
+        seriesId:
+          type: integer
+          nullable: true
+        seriesTitle:
+          type: string
+          nullable: true
+        seasonNumber:
+          type: integer
+          nullable: true
+        episodeNumber:
+          type: integer
+          nullable: true
+        episodeCount:
+          type: integer
+          nullable: true
+          description: Total episodes in the series/season (for series/season-level events)
+        seasonCount:
+          type: integer
+          nullable: true
+          description: Total seasons in the series (for series-level events)
+        watchedAt:
+          type: string
+          format: date-time
+          nullable: true
+        timezone:
+          type: string
+        rewatchNumber:
+          type: integer
+        runtimeMinutes:
+          type: integer
+          nullable: true
+        genres:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    WatchEventListResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/WatchEvent"
+        total:
+          type: integer
+
+    CreateWatchEventRequest:
+      type: object
+      required:
+        - mediaType
+        - mediaId
+      properties:
+        mediaType:
+          type: string
+          enum:
+            - movie
+            - episode
+            - series
+            - season
+        mediaId:
+          type: integer
+          minimum: 1
+        seriesId:
+          type: integer
+          description: Required when mediaType is episode or season
+        seasonNumber:
+          type: integer
+          description: Required when mediaType is episode or season
+        episodeNumber:
+          type: integer
+          description: Required when mediaType is episode
+        justWatched:
+          type: boolean
+          description: If true, sets watchedAt to the current time
+          default: false
+        timezone:
+          type: string
+          description: IANA timezone (defaults to UTC)
+          default: UTC
+
+    MarkEpisodeWatchedRequest:
+      type: object
+      required:
+        - seriesId
+        - seasonNumber
+        - episodeNumber
+      properties:
+        seriesId:
+          type: integer
+        seasonNumber:
+          type: integer
+        episodeNumber:
+          type: integer
+        timezone:
+          type: string
+          description: IANA timezone (defaults to UTC)
+          default: UTC
+
+    WatchProgressResponse:
+      type: object
+      properties:
+        seriesId:
+          type: integer
+        episodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/EpisodeProgress"
+        total:
+          type: integer
+
+    EpisodeProgress:
+      type: object
+      properties:
+        id:
+          type: string
+        seasonNumber:
+          type: integer
+          nullable: true
+        episodeNumber:
+          type: integer
+          nullable: true
+        watchedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    StatsResult:
+      type: object
+      properties:
+        totalMoviesWatched:
+          type: integer
+        totalSeriesCompleted:
+          type: integer
+        totalEpisodesWatched:
+          type: integer
+        estimatedMinutesWatched:
+          type: integer
+        genreBreakdown:
+          type: array
+          items:
+            $ref: "#/components/schemas/GenreStat"
+        monthlyActivity:
+          type: array
+          items:
+            $ref: "#/components/schemas/MonthActivity"
+        currentStreak:
+          type: integer
+          description: Current consecutive days with watch activity
+        longestStreak:
+          type: integer
+          description: Longest consecutive days with watch activity
+
+    GenreStat:
+      type: object
+      properties:
+        genre:
+          type: string
+        count:
+          type: integer
+
+    MonthActivity:
+      type: object
+      properties:
+        month:
+          type: string
+          description: Year-month in YYYY-MM format
+          example: "2026-04"
+        moviesWatched:
+          type: integer
+        episodesWatched:
+          type: integer
+
+    UserAchievement:
+      type: object
+      properties:
+        id:
+          type: string
+        achievementId:
+          type: string
+        name:
+          type: string
+          description: Human-readable achievement name
+        description:
+          type: string
+          description: Short explanation of how the achievement is earned
+        earnedViaMediaType:
+          type: string
+          nullable: true
+          enum:
+            - movie
+            - series
+          description: The media type of the item that triggered the achievement
+        earnedViaMediaId:
+          type: integer
+          nullable: true
+          description: The media ID of the item that triggered the achievement
+        earnedViaMediaTitle:
+          type: string
+          nullable: true
+          description: The title of the media that triggered the achievement
+        seenAt:
+          type: string
+          format: date-time
+          nullable: true
+        earnedAt:
+          type: string
+          format: date-time
+
+    AchievementsResponse:
+      type: object
+      properties:
+        achievements:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserAchievement"

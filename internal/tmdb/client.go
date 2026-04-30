@@ -25,6 +25,21 @@ type Config struct {
 	AccessToken string
 }
 
+type MediaClient interface {
+	GetMovie(ctx context.Context, id int) (*Movie, error)
+	GetSeries(ctx context.Context, id int) (*Series, error)
+	GetSeriesWithSeasons(ctx context.Context, id int) (*SeriesWithSeasons, error)
+	GetSeason(ctx context.Context, seriesID, seasonNumber int) (*SeasonDetails, error)
+	GetSeasonAggregateCredits(ctx context.Context, seriesID, seasonNumber int) (*AggregateCredits, error)
+	GetEpisode(ctx context.Context, seriesID, seasonNumber, episodeNumber int) (*EpisodeDetails, error)
+	GetPerson(ctx context.Context, id int) (*Person, error)
+	GetCollection(ctx context.Context, id int) (*Collection, error)
+	SearchMulti(ctx context.Context, query string, page int) (*SearchResults, error)
+	SearchMovies(ctx context.Context, query string, page int) (*SearchResults, error)
+	SearchSeries(ctx context.Context, query string, page int) (*SearchResults, error)
+	SearchPerson(ctx context.Context, query string, page int) (*SearchResults, error)
+}
+
 type Client struct {
 	httpClient  *http.Client
 	baseURL     string

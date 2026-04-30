@@ -88,8 +88,8 @@ func (s *SeasonCastPostgresStore) Set(ctx context.Context, seriesID, seasonNumbe
 	}
 }
 
-func (s *SeasonCastPostgresStore) PurgeExpired(ctx context.Context) (int64, error) {
-	defer metrics.TrackDbDuration(ctx, "season_cast_purge")()
+func (s *SeasonCastPostgresStore) DeleteExpired(ctx context.Context) (int64, error) {
+	defer metrics.TrackDbDuration(ctx, "season_cast_cache.delete_expired")()
 
 	result, err := s.pool.Exec(ctx, `delete from season_cast_cache where expires_at < now()`)
 	if err != nil {

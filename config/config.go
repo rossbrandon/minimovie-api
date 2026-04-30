@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -27,6 +28,21 @@ type Config struct {
 	AugurMaxRetries        int
 	AugurMinConfidence     float64
 	AugurTimeout           int
+	IsProduction           bool
+	GoogleClientID         string
+	GoogleClientSecret     string
+	GoogleIssuerURL        string
+	AppleClientID          string
+	AppleTeamID            string
+	AppleKeyID             string
+	ApplePrivateKey        []byte
+	AppleIssuerURL         string
+	AuthBaseURL            string
+	AuthUIBaseURL          string
+	SessionSecret          []byte
+	CookieHashKey          []byte
+	CookieEncKey           []byte
+	TokenEncryptionKey     []byte
 }
 
 const defaultPort = "8080"
@@ -41,6 +57,8 @@ const defaultAugurMaxTokens int = 4096
 const defaultAugurMaxRetries int = 1
 const defaultAugurMinConfidence float64 = 0.65
 const defaultAugurTimeout int = 60
+const defaultGoogleIssuerURL = "https://accounts.google.com"
+const defaultAppleIssuerURL = "https://appleid.apple.com"
 
 func Load() (*Config, error) {
 	tmdbAccessToken := os.Getenv("TMDB_ACCESS_TOKEN")
@@ -172,6 +190,70 @@ func Load() (*Config, error) {
 		augurTimeout = augurTimeoutInt
 	}
 
+	isProduction := os.Getenv("ENV") == "production"
+
+	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
+	googleClientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
+
+	googleIssuerURL := os.Getenv("GOOGLE_ISSUER_URL")
+	if googleIssuerURL == "" {
+		googleIssuerURL = defaultGoogleIssuerURL
+	}
+
+	appleClientID := os.Getenv("APPLE_CLIENT_ID")
+	appleTeamID := os.Getenv("APPLE_TEAM_ID")
+	appleKeyID := os.Getenv("APPLE_KEY_ID")
+
+	appleIssuerURL := os.Getenv("APPLE_ISSUER_URL")
+	if appleIssuerURL == "" {
+		appleIssuerURL = defaultAppleIssuerURL
+	}
+
+	var applePrivateKey []byte
+	applePrivateKeyB64 := os.Getenv("APPLE_PRIVATE_KEY")
+	if applePrivateKeyB64 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(applePrivateKeyB64)
+		if err != nil {
+			return nil, errors.New("APPLE_PRIVATE_KEY is not valid base64")
+		}
+		applePrivateKey = decoded
+	}
+
+	authBaseURL := os.Getenv("AUTH_BASE_URL")
+	authUIBaseURL := os.Getenv("AUTH_UI_BASE_URL")
+
+	var sessionSecret []byte
+	sessionSecretB64 := os.Getenv("SESSION_SECRET")
+	if sessionSecretB64 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(sessionSecretB64)
+		if err != nil {
+			return nil, errors.New("SESSION_SECRET is not valid base64")
+		}
+		if len(decoded) < 32 {
+			return nil, errors.New("SESSION_SECRET must be at least 32 bytes")
+		}
+		sessionSecret = decoded
+	}
+
+	var cookieHashKey, cookieEncKey []byte
+	if len(sessionSecret) >= 32 {
+		cookieHashKey = sessionSecret[:16]
+		cookieEncKey = sessionSecret[16:32]
+	}
+
+	var tokenEncryptionKey []byte
+	tokenEncryptionKeyB64 := os.Getenv("TOKEN_ENCRYPTION_KEY")
+	if tokenEncryptionKeyB64 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(tokenEncryptionKeyB64)
+		if err != nil {
+			return nil, errors.New("TOKEN_ENCRYPTION_KEY is not valid base64")
+		}
+		if len(decoded) != 32 {
+			return nil, errors.New("TOKEN_ENCRYPTION_KEY must be exactly 32 bytes")
+		}
+		tokenEncryptionKey = decoded
+	}
+
 	return &Config{
 		Port:                   port,
 		Timeout:                timeout,
@@ -190,5 +272,20 @@ func Load() (*Config, error) {
 		AugurMaxRetries:        augurMaxRetries,
 		AugurMinConfidence:     augurMinConfidence,
 		AugurTimeout:           augurTimeout,
+		IsProduction:           isProduction,
+		GoogleClientID:         googleClientID,
+		GoogleClientSecret:     googleClientSecret,
+		GoogleIssuerURL:        googleIssuerURL,
+		AppleClientID:          appleClientID,
+		AppleTeamID:            appleTeamID,
+		AppleKeyID:             appleKeyID,
+		ApplePrivateKey:        applePrivateKey,
+		AppleIssuerURL:         appleIssuerURL,
+		AuthBaseURL:            authBaseURL,
+		AuthUIBaseURL:          authUIBaseURL,
+		SessionSecret:          sessionSecret,
+		CookieHashKey:          cookieHashKey,
+		CookieEncKey:           cookieEncKey,
+		TokenEncryptionKey:     tokenEncryptionKey,
 	}, nil
 }

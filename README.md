@@ -44,6 +44,8 @@ minimovie-api/
 ├── cmd/
 │   ├── api/
 │   │   └── main.go                 # API server entry point
+│   ├── cleanup/
+│   │   └── main.go                 # Expired record purge job (cron)
 │   └── sync/
 │       └── main.go                 # Person sync job (cron)
 │
@@ -51,22 +53,46 @@ minimovie-api/
 │   └── config.go                   # Config definitions and loader
 │
 ├── internal/
+│   ├── achievements/
+│   │   ├── checkers.go             # Achievement checkers
+│   │   ├── checkers_test.go        # Integration tests
+│   │   ├── definitions.go          # Achievement definitions (IDs, names, descriptions)
+│   │   └── worker.go               # Background achievement worker
+│   │
 │   ├── age/
 │   │   ├── age.go                  # Age calculation utilities
 │   │   └── resolver.go             # Person age resolver (cache → DB → API)
 │   │
 │   ├── api/
 │   │   ├── router.go               # Chi router setup, registers all routes
+│   │   ├── middleware/
+│   │   │   ├── auth.go             # Session auth middleware
+│   │   │   └── cors.go             # CORS configuration
 │   │   └── handlers/
 │   │       ├── handlers.go         # Handler dependencies
+│   │       ├── helpers.go          # Shared handler helpers
+│   │       ├── account.go          # DeleteAccount, ExportUserData
+│   │       ├── achievements.go     # Achievements list, unseen, mark seen
+│   │       ├── auth.go             # BeginAuth, AuthCallback, ExchangeToken, GetSession, Logout
 │   │       ├── credits.go          # Credits types and functions
 │   │       ├── episode.go          # GetEpisode handler
+│   │       ├── interesting.go      # Person interesting info (augur)
 │   │       ├── movie.go            # GetMovie handler
+│   │       ├── notifications.go    # Apple server-to-server notifications
 │   │       ├── person.go           # GetPerson handler
+│   │       ├── person_series.go    # Person series credits handler
+│   │       ├── revocation.go       # Token revocation
 │   │       ├── search.go           # SearchMulti handler
 │   │       ├── season.go           # GetSeason handler
 │   │       ├── series.go           # GetSeries handler
-│   │       └── watch.go            # WatchProviders types and functions
+│   │       ├── stats.go            # User stats handler
+│   │       ├── watch.go            # WatchProviders types and functions
+│   │       ├── watch_events.go     # Watch event CRUD
+│   │       └── watchlist.go        # Watchlist CRUD
+│   │
+│   ├── auth/
+│   │   ├── oidc.go                 # OIDC provider registry (zitadel/oidc)
+│   │   └── apple_secret.go         # Apple client_secret JWT generation
 │   │
 │   ├── httputil/
 │   │   └── response.go             # JSON(w, status, data), Error(w, status, msg)
@@ -76,10 +102,22 @@ minimovie-api/
 │   │   └── middleware.go           # HTTP metrics middleware
 │   │
 │   ├── store/
-│   │   ├── bigcache.go             # In-memory cache adapter
+│   │   ├── pool.go                 # PostgreSQL connection pool
 │   │   ├── cache.go                # Cache interface
-│   │   ├── postgres.go             # PostgreSQL person store
-│   │   └── sync_job.go             # Sync job store operations
+│   │   ├── person_cache.go         # In-memory person birthday cache
+│   │   ├── season_cast_cache.go    # In-memory season cast cache
+│   │   ├── achievement_store.go    # Achievement store
+│   │   ├── auth_code_store.go      # One-time auth code store
+│   │   ├── interesting_info_store.go # LLM-enriched person info store
+│   │   ├── notification_store.go   # Apple notification dedup store
+│   │   ├── person_store.go         # PostgreSQL person store
+│   │   ├── season_cast_store.go    # Season aggregate cast store
+│   │   ├── session_store.go        # Session store
+│   │   ├── stats_store.go          # User stats store
+│   │   ├── sync_job.go             # Sync job store operations
+│   │   ├── user_store.go           # User + OAuth account store
+│   │   ├── watch_event_store.go    # Watch event store
+│   │   └── watchlist_store.go      # Watchlist store
 │   │
 │   └── tmdb/
 │       ├── client.go               # TMDB HTTP client
@@ -87,6 +125,7 @@ minimovie-api/
 │       ├── collection.go           # GetCollection()
 │       ├── credits.go              # Credits, AggregateCredits, CombinedCredits types
 │       ├── episode.go              # GetEpisode()
+│       ├── media_metadata.go       # TMDB metadata resolution for watch events
 │       ├── metadata.go             # Shared types
 │       ├── movie.go                # GetMovie()
 │       ├── person.go               # GetPerson()
@@ -96,6 +135,7 @@ minimovie-api/
 │       └── watch.go                # WatchProviders types
 │
 ├── local-development/
+│   ├── api-examples.md             # Curl/HTTP examples for all endpoints
 │   ├── docker-compose.yml          # Local Postgres setup
 │   └── init.sql                    # Database schema
 │
@@ -146,6 +186,16 @@ minimovie-api/
   - People
   - Where to Play
   - Trailer (TBD)
+- User
+  - Watchlist (want_to_watch / watched)
+  - Watch Events (movie / series / season / episode)
+  - Stats (movies watched, series completed, episodes watched, hours, streaks, genre breakdown)
+  - Achievements (gamification badges earned via watch activity)
+  - Account management (delete, export)
+
+## Authentication
+
+OAuth 2.0 / OpenID Connect via [zitadel/oidc](https://github.com/zitadel/oidc). Supports Google and Apple Sign-in.
 
 ## Data Enrichments
 

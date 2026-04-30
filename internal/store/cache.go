@@ -17,10 +17,8 @@ type SeasonCastCache interface {
 	Set(ctx context.Context, seriesID, seasonNumber int, castMap map[int]int, expiresAt time.Time)
 }
 
-// Purgeable is implemented by any Postgres cache store with expiring records.
-// The cleanup command iterates all registered Purgeable stores and calls PurgeExpired.
 type Purgeable interface {
-	PurgeExpired(ctx context.Context) (rowsPurged int64, err error)
+	DeleteExpired(ctx context.Context) (rowsDeleted int64, err error)
 	TableName() string
 }
 

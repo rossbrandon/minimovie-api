@@ -29,11 +29,15 @@ type Metrics struct {
 	CacheOperationsTotal metric.Int64Counter
 	DbRowsPurgedTotal    metric.Int64Counter
 
-	AugurRequestsTotal   metric.Int64Counter
-	AugurRequestDuration metric.Float64Histogram
-	AugurFieldsTotal     metric.Int64Counter
-	AugurFieldConfidence metric.Float64Histogram
-	AugurTokensTotal     metric.Int64Counter
+	AugurRequestsTotal       metric.Int64Counter
+	AugurRequestDuration     metric.Float64Histogram
+	AugurFieldsTotal         metric.Int64Counter
+	AugurFieldConfidence     metric.Float64Histogram
+	AugurTokensTotal         metric.Int64Counter
+	AuthEventsTotal          metric.Int64Counter
+	WatchlistOperationsTotal metric.Int64Counter
+	WatchEventsTotal         metric.Int64Counter
+	AchievementsEarnedTotal  metric.Int64Counter
 }
 
 type Config struct {
@@ -186,6 +190,38 @@ func initMetrics(meter metric.Meter) (*Metrics, error) {
 		return nil, err
 	}
 
+	m.AuthEventsTotal, err = meter.Int64Counter("auth_events_total",
+		metric.WithDescription("Total authentication events by provider and event type"),
+		metric.WithUnit("{event}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.WatchlistOperationsTotal, err = meter.Int64Counter("watchlist_operations_total",
+		metric.WithDescription("Total watchlist mutations by operation and media type"),
+		metric.WithUnit("{operation}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.WatchEventsTotal, err = meter.Int64Counter("watch_events_total",
+		metric.WithDescription("Total watch events by operation and media type"),
+		metric.WithUnit("{event}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.AchievementsEarnedTotal, err = meter.Int64Counter("achievements_earned_total",
+		metric.WithDescription("Total achievements awarded by achievement type"),
+		metric.WithUnit("{achievement}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return m, nil
 }
 
@@ -300,4 +336,31 @@ func TrackDbDuration(ctx context.Context, operation string) func() {
 			M.RecordDbOperation(ctx, operation, time.Since(start))
 		}
 	}
+}
+
+func (m *Metrics) RecordAuthEvent(ctx context.Context, provider, event string) {
+	m.AuthEventsTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("provider", provider),
+		attribute.String("event", event),
+	))
+}
+
+func (m *Metrics) RecordWatchlistOperation(ctx context.Context, operation, mediaType string) {
+	m.WatchlistOperationsTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("operation", operation),
+		attribute.String("media_type", mediaType),
+	))
+}
+
+func (m *Metrics) RecordWatchEvent(ctx context.Context, operation, mediaType string) {
+	m.WatchEventsTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("operation", operation),
+		attribute.String("media_type", mediaType),
+	))
+}
+
+func (m *Metrics) RecordAchievementEarned(ctx context.Context, achievementID string) {
+	m.AchievementsEarnedTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("achievement_id", achievementID),
+	))
 }
