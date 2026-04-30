@@ -10,6 +10,8 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+const appleSecretMaxLifetime = 180 * 24 * time.Hour // 6 months
+
 func GenerateAppleClientSecret(teamID, keyID, clientID string, privateKeyPEM []byte) (string, error) {
 	block, _ := pem.Decode(privateKeyPEM)
 	if block == nil {
@@ -25,7 +27,7 @@ func GenerateAppleClientSecret(teamID, keyID, clientID string, privateKeyPEM []b
 	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
 		"iss": teamID,
 		"iat": now.Unix(),
-		"exp": now.Add(1 * time.Hour).Unix(),
+		"exp": now.Add(appleSecretMaxLifetime).Unix(),
 		"aud": "https://appleid.apple.com",
 		"sub": clientID,
 	})
