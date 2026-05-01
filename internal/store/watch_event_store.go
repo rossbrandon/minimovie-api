@@ -47,6 +47,7 @@ func NewWatchEventStore(pool *pgxpool.Pool) *WatchEventStore {
 }
 
 type WatchEventCreate struct {
+	ID            string
 	UserID        string
 	MediaType     string
 	MediaID       int
@@ -201,19 +202,24 @@ func (s *WatchEventStore) Create(ctx context.Context, input WatchEventCreate) (*
 			genres = []string{}
 		}
 
+		var idOverride *string
+		if input.ID != "" {
+			idOverride = &input.ID
+		}
+
 		ev = &WatchEvent{}
 		return tx.QueryRow(ctx,
 			`insert into watch_event (
-				user_id, media_type, media_id, media_title,
+				id, user_id, media_type, media_id, media_title,
 				series_id, series_title, season_number, episode_number,
-				episode_count, season_count, watched_at, timezone, 
+				episode_count, season_count, watched_at, timezone,
 				rewatch_number, runtime_minutes, genres
-			) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			) values (coalesce($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 			returning id, media_type, media_id, media_title,
 				series_id, series_title, season_number, episode_number,
-				episode_count, season_count, watched_at, timezone, 
+				episode_count, season_count, watched_at, timezone,
 				rewatch_number, runtime_minutes, genres, created_at`,
-			input.UserID, input.MediaType, input.MediaID, input.Meta.Title,
+			idOverride, input.UserID, input.MediaType, input.MediaID, input.Meta.Title,
 			input.SeriesID, input.Meta.SeriesTitle, input.SeasonNumber, input.EpisodeNumber,
 			input.EpisodeCount, input.SeasonCount, input.WatchedAt, input.Timezone,
 			rewatchNumber, input.Meta.RuntimeMinutes, genres,

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/metrics"
@@ -59,9 +60,10 @@ func (h *Handlers) CreateWatchEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go h.processWatchEvent(user.ID, req, tz)
+	watchEventID := uuid.New().String()
+	go h.processWatchEvent(user.ID, req, tz, watchEventID)
 
-	httputil.JSON(w, http.StatusAccepted, map[string]string{"status": "accepted"}, 0)
+	httputil.JSON(w, http.StatusAccepted, map[string]string{"status": "accepted", "id": watchEventID}, 0)
 }
 
 func validateCreateWatchEvent(req createWatchEventRequest) string {
@@ -84,7 +86,7 @@ func validateCreateWatchEvent(req createWatchEventRequest) string {
 	return ""
 }
 
-func (h *Handlers) processWatchEvent(userID string, req createWatchEventRequest, tz string) {
+func (h *Handlers) processWatchEvent(userID string, req createWatchEventRequest, tz string, watchEventID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -108,6 +110,7 @@ func (h *Handlers) processWatchEvent(userID string, req createWatchEventRequest,
 	}
 
 	_, err = h.watchEventStore.Create(ctx, store.WatchEventCreate{
+		ID:            watchEventID,
 		UserID:        userID,
 		MediaType:     req.MediaType,
 		MediaID:       req.MediaID,

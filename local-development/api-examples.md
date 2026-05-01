@@ -423,15 +423,15 @@ Content-Type: application/json
 }
 ```
 
-Response: `201 Created`
+Response: `202 Accepted`
+
+> Metadata resolution and the DB write happen asynchronously. The `id` is a pre-generated UUID
+> you can use immediately to delete the event if needed — the async write will use this same ID.
 
 ```json
 {
-  "id": "we_abc123",
-  "mediaType": "movie",
-  "mediaId": 550,
-  "watchedAt": "2026-04-28T20:30:00Z",
-  "timezone": "America/Chicago"
+  "status": "accepted",
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
 
@@ -455,6 +455,15 @@ Content-Type: application/json
 }
 ```
 
+Response: `202 Accepted`
+
+```json
+{
+  "status": "accepted",
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+}
+```
+
 Valid `mediaType`: `movie`, `episode`, `series`, `season`
 For `episode` type, `seriesId`, `seasonNumber`, and `episodeNumber` are required.
 For `season` type, `seriesId` and `seasonNumber` are required.
@@ -473,6 +482,15 @@ Content-Type: application/json
   "mediaId": 1396,
   "justWatched": false,
   "timezone": "America/Chicago"
+}
+```
+
+Response: `202 Accepted`
+
+```json
+{
+  "status": "accepted",
+  "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
 

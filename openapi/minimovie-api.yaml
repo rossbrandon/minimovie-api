@@ -1097,12 +1097,12 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateWatchEventRequest"
       responses:
-        "201":
-          description: Watch event created
+        "202":
+          description: Watch event accepted — metadata resolution and DB write happen asynchronously
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/WatchEvent"
+                $ref: "#/components/schemas/CreateWatchEventResponse"
         "400":
           description: Invalid request body
           content:
@@ -1115,20 +1115,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Media not found on TMDB
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Internal server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "503":
-          description: Metadata resolution failed
           content:
             application/json:
               schema:
@@ -2248,6 +2236,17 @@ components:
             $ref: "#/components/schemas/WatchEvent"
         total:
           type: integer
+
+    CreateWatchEventResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: accepted
+        id:
+          type: string
+          format: uuid
+          description: Pre-generated UUID for the watch event — can be used immediately to DELETE the event before the async write completes (the write will still use this ID)
 
     CreateWatchEventRequest:
       type: object
