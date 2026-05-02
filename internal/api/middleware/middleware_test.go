@@ -197,3 +197,48 @@ func TestNoStoreCache(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "no-store", rec.Header().Get("Cache-Control"))
 }
+
+func TestRequireOrigin_AllowedOrigin(t *testing.T) {
+	mw := RequireOrigin([]string{"https://minimovie.info"})
+	req := httptest.NewRequest(http.MethodPost, "/users/me/watch-events", nil)
+	req.Header.Set("Origin", "https://minimovie.info")
+	rec := httptest.NewRecorder()
+
+	mw(okHandler).ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestRequireOrigin_DisallowedOrigin(t *testing.T) {
+	mw := RequireOrigin([]string{"https://minimovie.info"})
+	req := httptest.NewRequest(http.MethodPost, "/users/me/watch-events", nil)
+	req.Header.Set("Origin", "https://evil.example")
+	rec := httptest.NewRecorder()
+
+	mw(okHandler).ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestRequireOrigin_MissingOrigin(t *testing.T) {
+	mw := RequireOrigin([]string{"https://minimovie.info"})
+	req := httptest.NewRequest(http.MethodPost, "/users/me/watch-events", nil)
+	rec := httptest.NewRecorder()
+
+	mw(okHandler).ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusForbidden, rec.Code)
+}
+
+func TestRequireOrigin_SafeMethodsBypass(t *testing.T) {
+	mw := RequireOrigin([]string{"https://minimovie.info"})
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
+		req := httptest.NewRequest(method, "/users/me/watchlist", nil)
+		// No Origin header set on purpose.
+		rec := httptest.NewRecorder()
+
+		mw(okHandler).ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code, "method %s should bypass origin check", method)
+	}
+}

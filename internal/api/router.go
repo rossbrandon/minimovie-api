@@ -16,6 +16,11 @@ import (
 )
 
 var tokenAuth *jwtauth.JWTAuth
+var allowedUIOrigins = []string{
+	"https://minimovie.info",
+	"https://www.minimovie.info",
+	"http://localhost:4321",
+}
 
 func NewRouter(h *handlers.Handlers, cfg *config.Config, sessionStore store.SessionRepository) *chi.Mux {
 	tokenAuth = jwtauth.New("HS256", []byte(cfg.MiniMovieUiSecret), nil)
@@ -24,15 +29,18 @@ func NewRouter(h *handlers.Handlers, cfg *config.Config, sessionStore store.Sess
 	r.Use(metrics.Middleware)
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
+
+	// Configure CORS for cross-origin session cookie between minimovie.info and api.minimovie.info
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"https://minimovie.info", "https://localhost:4321", "http://localhost:4321"},
+		AllowedOrigins:   allowedUIOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
-		AllowCredentials: false,
+		AllowCredentials: true, // required for the browser to send the session in HTTP requests
 		MaxAge:           300,
 	}))
 
-	cookieName := "__Host-mm_session"
+	// Session cookie. Prod uses `__Secure-` prefix; dev uses an unprefixed name for localhost
+	cookieName := "__Secure-mm_session"
 	if !cfg.IsProduction {
 		cookieName = "mm_session_dev"
 	}
@@ -84,9 +92,12 @@ func NewRouter(h *handlers.Handlers, cfg *config.Config, sessionStore store.Sess
 		})
 	})
 
-	// User routes (session cookie only)
+	// User routes (session cookie only). RequireOrigin is CSRF defense in depth
+	// alongside SameSite=Lax on the session cookie — mutating requests must
+	// originate from a known UI origin.
 	r.Group(func(r chi.Router) {
 		r.Use(mw.RequireSession(sessionStore, cfg.SessionSecret, cookieName))
+		r.Use(mw.RequireOrigin(allowedUIOrigins))
 		r.Use(mw.NoStoreCache)
 
 		r.Get("/auth/session", h.GetSession)
