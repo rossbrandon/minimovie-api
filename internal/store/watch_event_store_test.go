@@ -41,27 +41,49 @@ func TestWatchEventStore_Create(t *testing.T) {
 	assert.Equal(t, 90, *ev.RuntimeMinutes)
 }
 
-func TestWatchEventStore_Create_RewatchNumber(t *testing.T) {
+// Verifies the (user_id, media_type, media_id) unique constraint collapses
+// duplicate Creates: the second call returns ErrDuplicateWatchEvent and no
+// second row is inserted. Mirrors the production flow where the handler
+// computes a deterministic UUIDv5 from the same tuple and reuses it across
+// retries — both PK and the unique constraint enforce the same invariant.
+func TestWatchEventStore_Create_Duplicate(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
 	userID := createTestUser(t)
 	s := NewWatchEventStore(testPool)
 
+	id := "11111111-2222-3333-4444-555555555555"
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	input := WatchEventCreate{
+		ID:        id,
 		UserID:    userID,
 		MediaType: "movie",
 		MediaID:   400,
+		WatchedAt: &now,
 		Timezone:  "UTC",
-		Meta:      ResolvedMedia{Title: "Rewatch", Genres: []string{}},
+		Meta:      ResolvedMedia{Title: "Once", Genres: []string{}},
 	}
 
 	first, err := s.Create(ctx, input)
 	require.NoError(t, err)
+	assert.Equal(t, id, first.ID)
 	assert.Equal(t, 1, first.RewatchNumber)
 
-	second, err := s.Create(ctx, input)
+	// Same explicit id — same PK, duplicate.
+	_, err = s.Create(ctx, input)
+	assert.ErrorIs(t, err, ErrDuplicateWatchEvent)
+
+	// Different id, same (user, media_type, media_id) — unique constraint, duplicate.
+	otherInput := input
+	otherInput.ID = "99999999-aaaa-bbbb-cccc-dddddddddddd"
+	otherInput.Meta.Title = "Twice"
+	_, err = s.Create(ctx, otherInput)
+	assert.ErrorIs(t, err, ErrDuplicateWatchEvent)
+
+	all, err := s.List(ctx, userID, WatchEventFilters{})
 	require.NoError(t, err)
-	assert.Equal(t, 2, second.RewatchNumber)
+	assert.Len(t, all, 1, "duplicate inserts must not create additional rows")
+	assert.Equal(t, "Once", all[0].MediaTitle, "first insert wins; second is silently skipped")
 }
 
 func TestWatchEventStore_List(t *testing.T) {

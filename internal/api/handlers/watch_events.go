@@ -60,10 +60,11 @@ func (h *Handlers) CreateWatchEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	watchEventID := uuid.New().String()
-	go h.processWatchEvent(user.ID, req, tz, watchEventID)
+	key := user.ID + "-" + req.MediaType + "-" + strconv.Itoa(req.MediaID)
+	watchEventId := uuid.NewSHA1(uuid.NameSpaceURL, []byte(key)).String()
+	go h.processWatchEvent(user.ID, req, tz, watchEventId)
 
-	httputil.JSON(w, http.StatusAccepted, map[string]string{"status": "accepted", "id": watchEventID}, 0)
+	httputil.JSON(w, http.StatusAccepted, map[string]string{"status": "accepted", "id": watchEventId}, 0)
 }
 
 func validateCreateWatchEvent(req createWatchEventRequest) string {
@@ -124,6 +125,11 @@ func (h *Handlers) processWatchEvent(userID string, req createWatchEventRequest,
 		Meta:          meta,
 	})
 	if err != nil {
+		// Duplicate calls are possible for client-side retries; we ignore them
+		if errors.Is(err, store.ErrDuplicateWatchEvent) {
+			log.Info().Str("watchEventID", watchEventID).Msg("duplicate watch event attempted, skipping insert")
+			return
+		}
 		log.Error().Err(err).Str("mediaType", req.MediaType).Int("mediaId", req.MediaID).Msg("failed to create watch event")
 		return
 	}

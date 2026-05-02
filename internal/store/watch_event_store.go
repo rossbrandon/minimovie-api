@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -9,6 +10,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rossbrandon/minimovie-api/internal/metrics"
 )
+
+// ErrDuplicateWatchEvent is returned by Create when the (user_id, media_type,
+// media_id) row already exists. Callers should treat this as successful
+// idempotent behavior, not an error to surface to the user.
+var ErrDuplicateWatchEvent = errors.New("duplicate watch event")
 
 type WatchEvent struct {
 	ID             string     `json:"id"`
@@ -164,7 +170,7 @@ func (s *WatchEventStore) GetByID(ctx context.Context, id, userID string) (*Watc
 	defer metrics.TrackDbDuration(ctx, "watch_events.get_by_id")()
 	query := `select id, media_type, media_id, media_title,
 		series_id, series_title, season_number, episode_number,
-		episode_count, season_count, watched_at, timezone, 
+		episode_count, season_count, watched_at, timezone,
 		rewatch_number, runtime_minutes, genres, created_at
 		from watch_event where id = $1 and user_id = $2`
 	var ev WatchEvent
@@ -186,35 +192,26 @@ func (s *WatchEventStore) GetByID(ctx context.Context, id, userID string) (*Watc
 func (s *WatchEventStore) Create(ctx context.Context, input WatchEventCreate) (*WatchEvent, error) {
 	defer metrics.TrackDbDuration(ctx, "watch_events.create")()
 
-	var ev *WatchEvent
+	genres := input.Meta.Genres
+	if genres == nil {
+		genres = []string{}
+	}
+
+	var idOverride *string
+	if input.ID != "" {
+		idOverride = &input.ID
+	}
+
+	ev := &WatchEvent{}
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		var rewatchNumber int
-		if err := tx.QueryRow(ctx,
-			`select coalesce(max(rewatch_number), 0) + 1 from watch_event
-			 where user_id = $1 and media_type = $2 and media_id = $3`,
-			input.UserID, input.MediaType, input.MediaID,
-		).Scan(&rewatchNumber); err != nil {
-			return err
-		}
-
-		genres := input.Meta.Genres
-		if genres == nil {
-			genres = []string{}
-		}
-
-		var idOverride *string
-		if input.ID != "" {
-			idOverride = &input.ID
-		}
-
-		ev = &WatchEvent{}
 		return tx.QueryRow(ctx,
 			`insert into watch_event (
 				id, user_id, media_type, media_id, media_title,
 				series_id, series_title, season_number, episode_number,
 				episode_count, season_count, watched_at, timezone,
-				rewatch_number, runtime_minutes, genres
-			) values (coalesce($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+				runtime_minutes, genres
+			) values (coalesce($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			on conflict do nothing
 			returning id, media_type, media_id, media_title,
 				series_id, series_title, season_number, episode_number,
 				episode_count, season_count, watched_at, timezone,
@@ -222,7 +219,7 @@ func (s *WatchEventStore) Create(ctx context.Context, input WatchEventCreate) (*
 			idOverride, input.UserID, input.MediaType, input.MediaID, input.Meta.Title,
 			input.SeriesID, input.Meta.SeriesTitle, input.SeasonNumber, input.EpisodeNumber,
 			input.EpisodeCount, input.SeasonCount, input.WatchedAt, input.Timezone,
-			rewatchNumber, input.Meta.RuntimeMinutes, genres,
+			input.Meta.RuntimeMinutes, genres,
 		).Scan(
 			&ev.ID, &ev.MediaType, &ev.MediaID, &ev.MediaTitle,
 			&ev.SeriesID, &ev.SeriesTitle, &ev.SeasonNumber, &ev.EpisodeNumber,
@@ -231,6 +228,9 @@ func (s *WatchEventStore) Create(ctx context.Context, input WatchEventCreate) (*
 		)
 	})
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrDuplicateWatchEvent
+		}
 		return nil, err
 	}
 

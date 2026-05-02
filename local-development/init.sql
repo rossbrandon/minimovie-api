@@ -162,7 +162,8 @@ create table if not exists watch_event (
     rewatch_number integer not null default 1,
     runtime_minutes integer,
     genres text[] not null default '{}',
-    created_at timestamptz not null default now()
+    created_at timestamptz not null default now(),
+    unique (user_id, media_type, media_id)
 );
 
 create index if not exists idx_watch_event_user_id on watch_event(user_id);
