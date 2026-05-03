@@ -107,6 +107,9 @@ func NewRouter(h *handlers.Handlers, cfg *config.Config, sessionStore store.Sess
 			r.Post("/delete", h.DeleteAccount)
 			r.Post("/export", h.ExportUserData)
 
+			// Consolidated state (watchlist, watch event) for the given media params
+			r.Get("/media-state", h.GetMediaState)
+
 			r.Get("/watchlist", h.ListWatchlist)
 			r.Post("/watchlist", h.AddToWatchlist)
 			r.Get("/watchlist/check", h.CheckWatchlist)
