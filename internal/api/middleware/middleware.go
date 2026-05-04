@@ -60,6 +60,41 @@ func NoStoreCache(next http.Handler) http.Handler {
 	})
 }
 
+// RequireOrigin rejects mutating requests whose Origin header is missing or
+// not in the allowlist.
+// This is Defense in depth on top of SameSite=Lax and protects
+// against requests with forged credentials from origins we don't control.
+// Safe methods (GET/HEAD/OPTIONS) pass through unchanged for read requests.
+// CORS preflight already enforces origin separately.
+func RequireOrigin(allowed []string) func(http.Handler) http.Handler {
+	allowedSet := make(map[string]struct{}, len(allowed))
+	for _, o := range allowed {
+		allowedSet[o] = struct{}{}
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isSafeMethod(r.Method) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				httputil.Error(w, http.StatusForbidden, "missing origin header")
+				return
+			}
+			if _, ok := allowedSet[origin]; !ok {
+				httputil.Error(w, http.StatusForbidden, "origin not allowed")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func isSafeMethod(method string) bool {
+	return method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions
+}
+
 func extractSessionCookie(r *http.Request, name string) string {
 	cookie, err := r.Cookie(name)
 	if err != nil {

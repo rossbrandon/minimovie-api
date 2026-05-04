@@ -1318,7 +1318,7 @@ components:
       type: apiKey
       in: cookie
       name: mm_session
-      description: Session cookie set after OAuth login (production name is __Host-mm_session)
+      description: Session cookie set after OAuth login (production name is __Secure-mm_session)
 
   schemas:
     ErrorResponse:
