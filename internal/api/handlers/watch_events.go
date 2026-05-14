@@ -414,11 +414,34 @@ func (h *Handlers) resolveRuntimeFromSeasons(ctx context.Context, mediaType stri
 
 func (h *Handlers) syncWatchlistItem(ctx context.Context, userID, mediaType string, mediaID int, seriesID *int, meta store.ResolvedMedia) {
 	lookupType, lookupID := resolveWatchlistTarget(mediaType, mediaID, seriesID)
-	existing, _ := h.watchlistStore.Check(ctx, userID, lookupType, lookupID)
-	if existing == nil {
-		_, _ = h.watchlistStore.Create(ctx, userID, lookupType, lookupID, "watched", meta)
-	} else {
-		_ = h.watchlistStore.UpdateSummary(ctx, userID, lookupType, lookupID)
+	existing, err := h.watchlistStore.Check(ctx, userID, lookupType, lookupID)
+	if err != nil {
+		log.Warn().Err(err).Str("mediaType", lookupType).Int("mediaId", lookupID).Msg("watchlist check failed during sync")
+		return
+	}
+	if existing != nil {
+		if err := h.watchlistStore.UpdateSummary(ctx, userID, lookupType, lookupID); err != nil {
+			log.Warn().Err(err).Str("mediaType", lookupType).Int("mediaId", lookupID).Msg("watchlist UpdateSummary failed")
+		}
+		return
+	}
+
+	// When the incoming watch event is for an episode/season, meta describes
+	// that entity. The watchlist row we're about to create is at the series
+	// level (per resolveWatchlistTarget), so re-resolve series metadata to
+	// avoid stamping the row with episode title/poster/etc.
+	syncMeta := meta
+	if lookupType != mediaType {
+		resolved, err := h.tmdbResolver.ResolveSeries(ctx, lookupID)
+		if err != nil {
+			log.Warn().Err(err).Int("seriesId", lookupID).Msg("series re-resolve failed during watchlist sync; using event meta")
+		} else {
+			syncMeta = resolved
+		}
+	}
+
+	if _, err := h.watchlistStore.Create(ctx, userID, lookupType, lookupID, "watched", syncMeta); err != nil {
+		log.Warn().Err(err).Str("mediaType", lookupType).Int("mediaId", lookupID).Msg("watchlist auto-add failed")
 	}
 }
 
