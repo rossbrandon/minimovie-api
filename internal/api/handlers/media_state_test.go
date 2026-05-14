@@ -51,24 +51,17 @@ func TestGetMediaState_MovieNeitherInWatchlistNorWatched(t *testing.T) {
 
 // Episode/season views don't render the watchlist button — verify the handler
 // skips the watchlist check for these media_types and only reports watch state.
-func TestGetMediaState_EpisodeSkipsWatchlistCheck(t *testing.T) {
+// Episode and season watch state lives in /users/me/progress/{seriesId};
+// /users/me/media-state only accepts movie and series.
+func TestGetMediaState_RejectsEpisodeAndSeason(t *testing.T) {
 	td := newTestHandlers(t)
-	// If the handler were to call Check anyway, the fake would return this
-	// non-nil item. The assertion below proves we never used it for episode.
-	td.watchlistStore.checkItem = &store.WatchlistItem{ID: "should-not-appear"}
-	td.watchEventStore.events = []store.WatchEvent{{ID: "ep-event", MediaType: "episode", MediaID: 9001}}
 
-	r := authedRequest(t, http.MethodGet, "/users/me/media-state?media_type=episode&media_id=9001&series_id=1399", nil)
-	w := httptest.NewRecorder()
-
-	td.handlers.GetMediaState(w, r)
-
-	require.Equal(t, http.StatusOK, w.Code)
-	var resp map[string]any
-	decodeJSON(t, w, &resp)
-	assert.Equal(t, false, resp["inWatchlist"], "episode views must not consult the watchlist")
-	assert.Equal(t, true, resp["hasWatched"])
-	assert.Equal(t, "ep-event", resp["watchEventId"])
+	for _, mt := range []string{"episode", "season"} {
+		r := authedRequest(t, http.MethodGet, "/users/me/media-state?media_type="+mt+"&media_id=9001", nil)
+		w := httptest.NewRecorder()
+		td.handlers.GetMediaState(w, r)
+		require.Equal(t, http.StatusBadRequest, w.Code, "mediaType=%s should be rejected", mt)
+	}
 }
 
 func TestGetMediaState_InvalidMediaType(t *testing.T) {

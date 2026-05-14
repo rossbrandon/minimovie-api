@@ -8,6 +8,7 @@ import (
 	"github.com/rossbrandon/minimovie-api/internal/age"
 	"github.com/rossbrandon/minimovie-api/internal/augur"
 	"github.com/rossbrandon/minimovie-api/internal/auth"
+	"github.com/rossbrandon/minimovie-api/internal/series"
 	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 )
@@ -19,17 +20,19 @@ type Handlers struct {
 	tmdbResolver    *tmdb.MetadataResolver
 	ageResolver     *age.Resolver
 	seasonCastCache store.SeasonCastCache
+	seriesService   *series.Service
 	augurResolver   *augur.Resolver
 
-	providers         auth.ProviderRegistry
-	userStore         store.UserRepository
-	sessionStore      store.SessionRepository
-	authCodeStore     store.AuthCodeRepository
-	notificationStore store.NotificationSeenRepository
-	watchlistStore    store.WatchlistRepository
-	watchEventStore   store.WatchEventRepository
-	achievementStore  store.AchievementRepository
-	statsStore        store.StatsRepository
+	providers           auth.ProviderRegistry
+	userStore           store.UserRepository
+	sessionStore        store.SessionRepository
+	authCodeStore       store.AuthCodeRepository
+	notificationStore   store.NotificationSeenRepository
+	watchlistStore      store.WatchlistRepository
+	watchEventStore     store.WatchEventRepository
+	achievementStore    store.AchievementRepository
+	statsStore          store.StatsRepository
+	seriesMetadataStore *store.SeriesMetadataStore
 
 	achievementWorker *achievements.Worker
 }
@@ -41,39 +44,43 @@ type HandlerDeps struct {
 	TmdbResolver    *tmdb.MetadataResolver
 	AgeResolver     *age.Resolver
 	SeasonCastCache store.SeasonCastCache
+	SeriesService   *series.Service
 	AugurResolver   *augur.Resolver
 
-	Providers         auth.ProviderRegistry
-	UserStore         store.UserRepository
-	SessionStore      store.SessionRepository
-	AuthCodeStore     store.AuthCodeRepository
-	NotificationStore store.NotificationSeenRepository
-	WatchlistStore    store.WatchlistRepository
-	WatchEventStore   store.WatchEventRepository
-	AchievementStore  store.AchievementRepository
-	StatsStore        store.StatsRepository
+	Providers           auth.ProviderRegistry
+	UserStore           store.UserRepository
+	SessionStore        store.SessionRepository
+	AuthCodeStore       store.AuthCodeRepository
+	NotificationStore   store.NotificationSeenRepository
+	WatchlistStore      store.WatchlistRepository
+	WatchEventStore     store.WatchEventRepository
+	AchievementStore    store.AchievementRepository
+	StatsStore          store.StatsRepository
+	SeriesMetadataStore *store.SeriesMetadataStore
 
 	AchievementWorker *achievements.Worker
 }
 
 func NewHandlers(deps HandlerDeps) *Handlers {
 	return &Handlers{
-		cfg:               deps.Cfg,
-		tmdbClient:        deps.TmdbClient,
-		tmdbResolver:      deps.TmdbResolver,
-		ageResolver:       deps.AgeResolver,
-		seasonCastCache:   deps.SeasonCastCache,
-		augurResolver:     deps.AugurResolver,
-		providers:         deps.Providers,
-		userStore:         deps.UserStore,
-		sessionStore:      deps.SessionStore,
-		authCodeStore:     deps.AuthCodeStore,
-		notificationStore: deps.NotificationStore,
-		watchlistStore:    deps.WatchlistStore,
-		watchEventStore:   deps.WatchEventStore,
-		achievementStore:  deps.AchievementStore,
-		statsStore:        deps.StatsStore,
-		achievementWorker: deps.AchievementWorker,
+		cfg:                 deps.Cfg,
+		tmdbClient:          deps.TmdbClient,
+		tmdbResolver:        deps.TmdbResolver,
+		ageResolver:         deps.AgeResolver,
+		seasonCastCache:     deps.SeasonCastCache,
+		seriesService:       deps.SeriesService,
+		augurResolver:       deps.AugurResolver,
+		providers:           deps.Providers,
+		userStore:           deps.UserStore,
+		sessionStore:        deps.SessionStore,
+		authCodeStore:       deps.AuthCodeStore,
+		notificationStore:   deps.NotificationStore,
+		watchlistStore:      deps.WatchlistStore,
+		watchEventStore:     deps.WatchEventStore,
+		achievementStore:    deps.AchievementStore,
+		statsStore:          deps.StatsStore,
+		seriesMetadataStore: deps.SeriesMetadataStore,
+		achievementWorker:   deps.AchievementWorker,
 	}
 }
 

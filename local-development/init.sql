@@ -1,3 +1,26 @@
+-- ============================================================
+-- Postgres Init Script
+-- ============================================================
+
+-- ============================================================
+-- Augur Interesting Info
+-- ============================================================
+
+create table if not exists interesting_info (
+    entity_type text not null,
+    entity_id   integer not null,
+    name        text not null,
+    data        jsonb not null,
+    fetched_at  timestamptz not null default now(),
+    created_at  timestamptz not null default now(),
+    updated_at  timestamptz not null default now(),
+    primary key (entity_type, entity_id)
+);
+
+-- ============================================================
+-- Entity Cache Tables
+-- ============================================================
+
 create table if not exists people (
     id integer primary key,
     name text,
@@ -10,8 +33,32 @@ create table if not exists people (
 );
 
 create index if not exists idx_people_fetched on people(fetched);
-
 create index if not exists idx_people_dates_covering on people (id) include (date_of_birth, date_of_death, popularity, fetched);
+
+create table if not exists season_cast_cache (
+    series_id     int not null,
+    season_number int not null,
+    cast_data     jsonb not null,
+    expires_at    timestamptz not null,
+    created_at    timestamptz not null default now(),
+    primary key (series_id, season_number)
+);
+
+create index if not exists idx_season_cast_cache_expires on season_cast_cache (expires_at);
+
+create table if not exists series_metadata (
+    series_id             integer primary key,
+    name                  text not null default '',
+    total_episodes        integer not null default 0,
+    total_seasons         integer not null default 0,
+    season_episode_counts jsonb not null default '{}'::jsonb,
+    in_production         boolean not null default false,
+    status                text,
+    last_air_date         date,
+    next_air_date         date,
+    fetched               boolean not null default true,
+    fetched_at            timestamptz not null default now()
+);
 
 create table if not exists sync_job_status (
     id serial primary key,
@@ -28,28 +75,6 @@ create table if not exists sync_job_status (
     finished_at timestamp,
     created_at timestamp default now(),
     updated_at timestamp default now()
-);
-
-create table if not exists season_cast_cache (
-    series_id     int not null,
-    season_number int not null,
-    cast_data     jsonb not null,
-    expires_at    timestamptz not null,
-    created_at    timestamptz not null default now(),
-    primary key (series_id, season_number)
-);
-
-create index if not exists idx_season_cast_cache_expires on season_cast_cache (expires_at);
-
-create table if not exists interesting_info (
-    entity_type text not null,
-    entity_id   integer not null,
-    name        text not null,
-    data        jsonb not null,
-    fetched_at  timestamptz not null default now(),
-    created_at  timestamptz not null default now(),
-    updated_at  timestamptz not null default now(),
-    primary key (entity_type, entity_id)
 );
 
 -- ============================================================
@@ -121,17 +146,17 @@ create index if not exists idx_provider_notifications_received_at on provider_no
 create table if not exists watchlist_item (
     id uuid primary key default gen_random_uuid(),
     user_id uuid not null references users(id) on delete cascade,
-    media_type text not null
-        check (media_type in ('movie', 'series')),
+    media_type text not null check (media_type in ('movie', 'series')),
     media_id integer not null,
     media_title text not null,
     poster_path text,
-    status text not null default 'want_to_watch'
-        check (status in ('want_to_watch', 'watched')),
+    status text not null default 'want_to_watch' check (status in ('want_to_watch', 'watched')),
     started_at timestamptz,
     finished_at timestamptz,
     last_watched_at timestamptz,
     watch_count integer not null default 0,
+    episodes_watched integer not null default 0,
+    seasons_watched integer not null default 0,
     genres text[] not null default '{}',
     runtime_minutes integer,
     vote_average real,
@@ -147,8 +172,7 @@ create index if not exists idx_watchlist_user_status on watchlist_item(user_id, 
 create table if not exists watch_event (
     id uuid primary key default gen_random_uuid(),
     user_id uuid not null references users(id) on delete cascade,
-    media_type text not null
-        check (media_type in ('movie', 'episode', 'series', 'season')),
+    media_type text not null check (media_type in ('movie', 'episode', 'series', 'season')),
     media_id integer not null,
     media_title text not null,
     series_id integer,
@@ -167,6 +191,8 @@ create table if not exists watch_event (
 );
 
 create index if not exists idx_watch_event_user_id on watch_event(user_id);
+create index if not exists idx_watch_event_user_series on watch_event(user_id, series_id)
+    where series_id is not null;
 
 -- ============================================================
 -- Gamification & Achievements

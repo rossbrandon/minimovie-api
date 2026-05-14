@@ -56,6 +56,20 @@ func TestCreateWatchEvent_MissingFields(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+// Series-level watch events have been retired in favor of per-season /
+// per-episode marks. Defensive against stale clients still posting them.
+func TestCreateWatchEvent_RejectsSeries(t *testing.T) {
+	td := newTestHandlers(t)
+
+	body := strings.NewReader(`{"mediaType":"series","mediaId":1399,"timezone":"UTC"}`)
+	r := authedRequest(t, http.MethodPost, "/watch-events", body)
+	w := httptest.NewRecorder()
+
+	td.handlers.CreateWatchEvent(w, r)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestListWatchEvents_Success(t *testing.T) {
 	td := newTestHandlers(t)
 	now := time.Now()

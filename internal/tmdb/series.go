@@ -21,6 +21,7 @@ type Series struct {
 	InProduction        bool                `json:"in_production"`
 	FirstAirDate        string              `json:"first_air_date"`
 	LastAirDate         string              `json:"last_air_date"`
+	NextEpisodeToAir    *NextEpisode        `json:"next_episode_to_air"`
 	NumberOfSeasons     int                 `json:"number_of_seasons"`
 	NumberOfEpisodes    int                 `json:"number_of_episodes"`
 	EpisodeRunTime      []int               `json:"episode_run_time"`
@@ -36,6 +37,10 @@ type Series struct {
 	Seasons             []Season            `json:"seasons"`
 	WatchProviders      WatchProviders      `json:"watch/providers"`
 	AggregateCredits    AggregateCredits    `json:"aggregate_credits"`
+}
+
+type NextEpisode struct {
+	AirDate string `json:"air_date"`
 }
 
 type Creator struct {

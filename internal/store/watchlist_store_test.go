@@ -162,6 +162,253 @@ func TestWatchlistStore_UniqueConstraint(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// UpdateSummary recomputes episodes_watched and seasons_watched from the
+// user's watch_event rows for a series. Aggregation is SUM(season
+// episode_count) + COUNT(episode events), distinct season-numbers touched
+// for seasons_watched.
+// seasons_watched counts only seasons the user has fully completed — via
+// season mark OR enough episode events to meet the season's total.
+func TestWatchlistStore_UpdateSummary_SeriesAggregation(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	userID := createTestUser(t)
+	wl := NewWatchlistStore(testPool)
+	we := NewWatchEventStore(testPool)
+	sm := NewSeriesMetadataStore(testPool)
+
+	seriesID := 5000
+	require.NoError(t, sm.Upsert(ctx, &SeriesMetadata{
+		SeriesID:            seriesID,
+		Name:                "Show",
+		TotalEpisodes:       30,
+		TotalSeasons:        3,
+		SeasonEpisodeCounts: map[int]int{1: 10, 2: 10, 3: 10},
+	}))
+	_, err := wl.Create(ctx, userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Show", Genres: []string{}})
+	require.NoError(t, err)
+
+	// Season 1 marked — one complete season.
+	seasonOne := 1
+	episodeCount := 10
+	_, err = we.MarkSeason(ctx, WatchEventCreate{
+		UserID: userID, MediaType: "season", MediaID: 6001,
+		SeriesID: &seriesID, SeasonNumber: &seasonOne, EpisodeCount: &episodeCount,
+		Timezone: "UTC", Meta: ResolvedMedia{Title: "S1", Genres: []string{}},
+	})
+	require.NoError(t, err)
+
+	// One episode in season 2 — not enough to complete.
+	seasonTwo := 2
+	ep := 1
+	_, err = we.Create(ctx, WatchEventCreate{
+		UserID: userID, MediaType: "episode", MediaID: 7001,
+		SeriesID: &seriesID, SeasonNumber: &seasonTwo, EpisodeNumber: &ep,
+		Timezone: "UTC", Meta: ResolvedMedia{Title: "S2E1", Genres: []string{}},
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, wl.UpdateSummary(ctx, userID, "series", seriesID))
+
+	items, err := wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, 11, items[0].EpisodesWatched, "10 from season mark + 1 episode event")
+	assert.Equal(t, 1, items[0].SeasonsWatched, "season 1 complete; season 2 only 1/10")
+	assert.Equal(t, "watched", items[0].Status, "any event flips status to watched")
+}
+
+// A season counts as complete when episode marks ≥ its cached episode_count,
+// even without an explicit season mark.
+func TestWatchlistStore_UpdateSummary_AllEpisodesMakeSeasonComplete(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	userID := createTestUser(t)
+	wl := NewWatchlistStore(testPool)
+	we := NewWatchEventStore(testPool)
+	sm := NewSeriesMetadataStore(testPool)
+
+	seriesID := 5100
+	require.NoError(t, sm.Upsert(ctx, &SeriesMetadata{
+		SeriesID:            seriesID,
+		Name:                "Mini",
+		TotalEpisodes:       3,
+		TotalSeasons:        1,
+		SeasonEpisodeCounts: map[int]int{1: 3},
+	}))
+	_, err := wl.Create(ctx, userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Mini", Genres: []string{}})
+	require.NoError(t, err)
+
+	seasonOne := 1
+	for ep := 1; ep <= 3; ep++ {
+		episode := ep
+		mediaID := 8000 + ep
+		_, err := we.Create(ctx, WatchEventCreate{
+			UserID: userID, MediaType: "episode", MediaID: mediaID,
+			SeriesID: &seriesID, SeasonNumber: &seasonOne, EpisodeNumber: &episode,
+			Timezone: "UTC", Meta: ResolvedMedia{Title: "ep", Genres: []string{}},
+		})
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, wl.UpdateSummary(ctx, userID, "series", seriesID))
+
+	items, err := wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, 3, items[0].EpisodesWatched)
+	assert.Equal(t, 1, items[0].SeasonsWatched, "3/3 episode marks completes the season")
+}
+
+// Without cached series_metadata, episode marks can't complete a season —
+// we don't know the totals. Season marks still count.
+func TestWatchlistStore_UpdateSummary_NoMetadataCannotCompleteViaEpisodes(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	userID := createTestUser(t)
+	wl := NewWatchlistStore(testPool)
+	we := NewWatchEventStore(testPool)
+
+	seriesID := 5200
+	_, err := wl.Create(ctx, userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Cold", Genres: []string{}})
+	require.NoError(t, err)
+
+	seasonOne := 1
+	for ep := 1; ep <= 5; ep++ {
+		episode := ep
+		mediaID := 9000 + ep
+		_, err := we.Create(ctx, WatchEventCreate{
+			UserID: userID, MediaType: "episode", MediaID: mediaID,
+			SeriesID: &seriesID, SeasonNumber: &seasonOne, EpisodeNumber: &episode,
+			Timezone: "UTC", Meta: ResolvedMedia{Title: "ep", Genres: []string{}},
+		})
+		require.NoError(t, err)
+	}
+
+	require.NoError(t, wl.UpdateSummary(ctx, userID, "series", seriesID))
+
+	items, err := wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, 5, items[0].EpisodesWatched)
+	assert.Equal(t, 0, items[0].SeasonsWatched, "no cached season totals → can't complete via episode marks")
+}
+
+// Full unwatch reverts status to 'want_to_watch'. Without this branch a series
+// would stay 'watched' even after all events were removed.
+func TestWatchlistStore_UpdateSummary_StatusRevertsOnFullUnwatch(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	userID := createTestUser(t)
+	wl := NewWatchlistStore(testPool)
+	we := NewWatchEventStore(testPool)
+
+	seriesID := 5500
+	_, err := wl.Create(ctx, userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Show2", Genres: []string{}})
+	require.NoError(t, err)
+
+	season := 1
+	episodeCount := 5
+	ev, err := we.MarkSeason(ctx, WatchEventCreate{
+		UserID: userID, MediaType: "season", MediaID: 6010,
+		SeriesID: &seriesID, SeasonNumber: &season, EpisodeCount: &episodeCount,
+		Timezone: "UTC", Meta: ResolvedMedia{Title: "S1", Genres: []string{}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, wl.UpdateSummary(ctx, userID, "series", seriesID))
+
+	items, err := wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "watched", items[0].Status)
+
+	require.NoError(t, we.Delete(ctx, ev.ID, userID))
+	require.NoError(t, wl.UpdateSummary(ctx, userID, "series", seriesID))
+
+	items, err = wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "want_to_watch", items[0].Status, "no events → revert to want_to_watch")
+	assert.Equal(t, 0, items[0].EpisodesWatched)
+	assert.Equal(t, 0, items[0].SeasonsWatched)
+}
+
+// List sorts by most recent interaction: COALESCE(last_watched_at, added_at)
+// DESC. Marking a long-dormant want-to-watch item should float it above
+// items added after it.
+func TestWatchlistStore_List_SortsByMostRecentInteraction(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	userID := createTestUser(t)
+	wl := NewWatchlistStore(testPool)
+	we := NewWatchEventStore(testPool)
+
+	// Item A: created earliest.
+	_, err := wl.Create(ctx, userID, "movie", 11, "want_to_watch", ResolvedMedia{Title: "Old", Genres: []string{}})
+	require.NoError(t, err)
+	// Item B: created later, still want_to_watch.
+	_, err = wl.Create(ctx, userID, "movie", 22, "want_to_watch", ResolvedMedia{Title: "Newer", Genres: []string{}})
+	require.NoError(t, err)
+
+	// Mark item A as watched — its last_watched_at advances past item B's added_at.
+	_, err = we.Create(ctx, WatchEventCreate{
+		UserID: userID, MediaType: "movie", MediaID: 11,
+		Timezone: "UTC", Meta: ResolvedMedia{Title: "Old", Genres: []string{}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, wl.UpdateSummary(ctx, userID, "movie", 11))
+
+	items, err := wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+	assert.Equal(t, 11, items[0].MediaID, "just-watched item floats to the top")
+	assert.Equal(t, 22, items[1].MediaID)
+}
+
+// JOIN to series_metadata: series rows without a cached entry get NULL
+// totals (not an error). The frontend treats null totals as "no progress
+// badge yet", which is the correct degraded state.
+func TestWatchlistStore_List_JoinNullForUncachedSeries(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	userID := createTestUser(t)
+	wl := NewWatchlistStore(testPool)
+
+	_, err := wl.Create(ctx, userID, "series", 6000, "want_to_watch", ResolvedMedia{Title: "Uncached", Genres: []string{}})
+	require.NoError(t, err)
+
+	items, err := wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Nil(t, items[0].TotalEpisodes, "no series_metadata row → null totals, no error")
+	assert.Nil(t, items[0].TotalSeasons)
+
+	// Add the metadata; List now picks it up.
+	sm := NewSeriesMetadataStore(testPool)
+	require.NoError(t, sm.Upsert(ctx, &SeriesMetadata{SeriesID: 6000, TotalEpisodes: 30, TotalSeasons: 3}))
+
+	items, err = wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.NotNil(t, items[0].TotalEpisodes)
+	assert.Equal(t, 30, *items[0].TotalEpisodes)
+	require.NotNil(t, items[0].TotalSeasons)
+	assert.Equal(t, 3, *items[0].TotalSeasons)
+
+	// Movie rows leave the JOIN columns NULL even when a series row of the
+	// same id exists in series_metadata.
+	_, err = wl.Create(ctx, userID, "movie", 6000, "want_to_watch", ResolvedMedia{Title: "Movie", Genres: []string{}})
+	require.NoError(t, err)
+
+	items, err = wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 2)
+	for _, item := range items {
+		if item.MediaType == "movie" {
+			assert.Nil(t, item.TotalEpisodes, "movies never JOIN to series_metadata")
+		}
+	}
+}
+
 func createOtherUser(t *testing.T) string {
 	t.Helper()
 	s := NewUserStore(testPool)

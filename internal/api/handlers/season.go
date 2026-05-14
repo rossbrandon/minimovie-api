@@ -62,6 +62,8 @@ func (h *Handlers) GetSeason(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.seriesService.UpdateSeries(seriesID)
+
 	details := toSeasonDetails(season)
 	h.enrichCreditsWithAges(r.Context(), details.Credits, season.AirDate, season.AirDate)
 

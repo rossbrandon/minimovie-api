@@ -199,6 +199,9 @@ func (f *fakeWatchEventStore) GetByID(_ context.Context, _, _ string) (*store.Wa
 func (f *fakeWatchEventStore) Create(_ context.Context, _ store.WatchEventCreate) (*store.WatchEvent, error) {
 	return f.createdEvent, f.createErr
 }
+func (f *fakeWatchEventStore) MarkSeason(_ context.Context, _ store.WatchEventCreate) (*store.WatchEvent, error) {
+	return f.createdEvent, f.createErr
+}
 func (f *fakeWatchEventStore) Delete(_ context.Context, _, _ string) error { return f.deleteErr }
 
 type fakeAchievementStore struct {

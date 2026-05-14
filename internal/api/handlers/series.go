@@ -76,6 +76,8 @@ func (h *Handlers) GetSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.seriesService.UpdateSeries(id)
+
 	details := toSeriesDetails(series)
 	h.enrichCreditsWithAges(r.Context(), details.Credits, series.FirstAirDate, series.LastAirDate)
 

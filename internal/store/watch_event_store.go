@@ -2,7 +2,6 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -10,11 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rossbrandon/minimovie-api/internal/metrics"
 )
-
-// ErrDuplicateWatchEvent is returned by Create when the (user_id, media_type,
-// media_id) row already exists. Callers should treat this as successful
-// idempotent behavior, not an error to surface to the user.
-var ErrDuplicateWatchEvent = errors.New("duplicate watch event")
 
 type WatchEvent struct {
 	ID             string     `json:"id"`
@@ -41,6 +35,7 @@ type WatchEventRepository interface {
 	ListBySeriesID(ctx context.Context, userID string, seriesID int) ([]WatchEvent, error)
 	GetByID(ctx context.Context, id, userID string) (*WatchEvent, error)
 	Create(ctx context.Context, input WatchEventCreate) (*WatchEvent, error)
+	MarkSeason(ctx context.Context, input WatchEventCreate) (*WatchEvent, error)
 	Delete(ctx context.Context, id, userID string) error
 }
 
@@ -189,9 +184,80 @@ func (s *WatchEventStore) GetByID(ctx context.Context, id, userID string) (*Watc
 	return &ev, nil
 }
 
+// Create UPSERTs a movie or episode watch event. Re-marking refreshes
+// counts and created_at. Rejects 'season' (must go through MarkSeason to
+// preserve the no-overlap invariant) and 'series' (retired).
 func (s *WatchEventStore) Create(ctx context.Context, input WatchEventCreate) (*WatchEvent, error) {
 	defer metrics.TrackDbDuration(ctx, "watch_events.create")()
 
+	if err := validateCreateInput(input); err != nil {
+		return nil, err
+	}
+
+	ev := &WatchEvent{}
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		return upsertWatchEvent(ctx, tx, input, ev)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ev, nil
+}
+
+// MarkSeason atomically deletes any prior per-episode rows for the
+// (user, series, season) and UPSERTs the season row. The atomic clear
+// preserves the no-overlap invariant the watchlist aggregation depends on.
+func (s *WatchEventStore) MarkSeason(ctx context.Context, input WatchEventCreate) (*WatchEvent, error) {
+	defer metrics.TrackDbDuration(ctx, "watch_events.mark_season")()
+
+	if err := validateMarkSeasonInput(input); err != nil {
+		return nil, err
+	}
+
+	ev := &WatchEvent{}
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx,
+			`delete from watch_event
+			 where user_id = $1 and series_id = $2 and season_number = $3 and media_type = 'episode'`,
+			input.UserID, *input.SeriesID, *input.SeasonNumber,
+		); err != nil {
+			return err
+		}
+		return upsertWatchEvent(ctx, tx, input, ev)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ev, nil
+}
+
+func validateCreateInput(input WatchEventCreate) error {
+	switch input.MediaType {
+	case "movie", "episode":
+		return nil
+	case "season":
+		return fmt.Errorf("watch_event_store: use MarkSeason for season writes (preserves no-overlap invariant)")
+	case "series":
+		return fmt.Errorf("watch_event_store: series-level watch events are not supported")
+	default:
+		return fmt.Errorf("watch_event_store: invalid media_type %q", input.MediaType)
+	}
+}
+
+func validateMarkSeasonInput(input WatchEventCreate) error {
+	if input.MediaType != "season" {
+		return fmt.Errorf("watch_event_store: MarkSeason requires media_type=season, got %q", input.MediaType)
+	}
+	if input.SeriesID == nil || input.SeasonNumber == nil {
+		return fmt.Errorf("watch_event_store: MarkSeason requires SeriesID and SeasonNumber")
+	}
+	if input.EpisodeNumber != nil {
+		return fmt.Errorf("watch_event_store: MarkSeason does not accept EpisodeNumber")
+	}
+	return nil
+}
+
+func upsertWatchEvent(ctx context.Context, tx pgx.Tx, input WatchEventCreate, ev *WatchEvent) error {
 	genres := input.Meta.Genres
 	if genres == nil {
 		genres = []string{}
@@ -202,39 +268,37 @@ func (s *WatchEventStore) Create(ctx context.Context, input WatchEventCreate) (*
 		idOverride = &input.ID
 	}
 
-	ev := &WatchEvent{}
-	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx,
-			`insert into watch_event (
-				id, user_id, media_type, media_id, media_title,
-				series_id, series_title, season_number, episode_number,
-				episode_count, season_count, watched_at, timezone,
-				runtime_minutes, genres
-			) values (coalesce($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-			on conflict do nothing
-			returning id, media_type, media_id, media_title,
-				series_id, series_title, season_number, episode_number,
-				episode_count, season_count, watched_at, timezone,
-				rewatch_number, runtime_minutes, genres, created_at`,
-			idOverride, input.UserID, input.MediaType, input.MediaID, input.Meta.Title,
-			input.SeriesID, input.Meta.SeriesTitle, input.SeasonNumber, input.EpisodeNumber,
-			input.EpisodeCount, input.SeasonCount, input.WatchedAt, input.Timezone,
-			input.Meta.RuntimeMinutes, genres,
-		).Scan(
-			&ev.ID, &ev.MediaType, &ev.MediaID, &ev.MediaTitle,
-			&ev.SeriesID, &ev.SeriesTitle, &ev.SeasonNumber, &ev.EpisodeNumber,
-			&ev.EpisodeCount, &ev.SeasonCount, &ev.WatchedAt, &ev.Timezone,
-			&ev.RewatchNumber, &ev.RuntimeMinutes, &ev.Genres, &ev.CreatedAt,
-		)
-	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrDuplicateWatchEvent
-		}
-		return nil, err
-	}
-
-	return ev, nil
+	return tx.QueryRow(ctx,
+		`insert into watch_event (
+			id, user_id, media_type, media_id, media_title,
+			series_id, series_title, season_number, episode_number,
+			episode_count, season_count, watched_at, timezone,
+			runtime_minutes, genres, created_at
+		) values (coalesce($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now())
+		on conflict (user_id, media_type, media_id) do update set
+			media_title = excluded.media_title,
+			series_title = coalesce(excluded.series_title, watch_event.series_title),
+			episode_count = excluded.episode_count,
+			season_count = excluded.season_count,
+			watched_at = excluded.watched_at,
+			timezone = excluded.timezone,
+			runtime_minutes = excluded.runtime_minutes,
+			genres = excluded.genres,
+			created_at = now()
+		returning id, media_type, media_id, media_title,
+			series_id, series_title, season_number, episode_number,
+			episode_count, season_count, watched_at, timezone,
+			rewatch_number, runtime_minutes, genres, created_at`,
+		idOverride, input.UserID, input.MediaType, input.MediaID, input.Meta.Title,
+		input.SeriesID, input.Meta.SeriesTitle, input.SeasonNumber, input.EpisodeNumber,
+		input.EpisodeCount, input.SeasonCount, input.WatchedAt, input.Timezone,
+		input.Meta.RuntimeMinutes, genres,
+	).Scan(
+		&ev.ID, &ev.MediaType, &ev.MediaID, &ev.MediaTitle,
+		&ev.SeriesID, &ev.SeriesTitle, &ev.SeasonNumber, &ev.EpisodeNumber,
+		&ev.EpisodeCount, &ev.SeasonCount, &ev.WatchedAt, &ev.Timezone,
+		&ev.RewatchNumber, &ev.RuntimeMinutes, &ev.Genres, &ev.CreatedAt,
+	)
 }
 
 func (s *WatchEventStore) Delete(ctx context.Context, id, userID string) error {

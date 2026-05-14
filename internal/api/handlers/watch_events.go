@@ -17,7 +17,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var validWatchEventMediaTypes = map[string]bool{"movie": true, "episode": true, "series": true, "season": true}
+var validWatchEventMediaTypes = map[string]bool{"movie": true, "episode": true, "season": true}
 
 type createWatchEventRequest struct {
 	MediaType     string `json:"mediaType"`
@@ -34,6 +34,20 @@ type markEpisodeRequest struct {
 	SeasonNumber  int    `json:"seasonNumber"`
 	EpisodeNumber int    `json:"episodeNumber"`
 	Timezone      string `json:"timezone"`
+}
+
+type progressSeasonEvent struct {
+	ID           string    `json:"id"`
+	SeasonNumber int       `json:"seasonNumber"`
+	EpisodeCount int       `json:"episodeCount"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+type progressEpisodeEvent struct {
+	ID            string    `json:"id"`
+	SeasonNumber  int       `json:"seasonNumber"`
+	EpisodeNumber int       `json:"episodeNumber"`
+	CreatedAt     time.Time `json:"createdAt"`
 }
 
 func (h *Handlers) CreateWatchEvent(w http.ResponseWriter, r *http.Request) {
@@ -68,8 +82,11 @@ func (h *Handlers) CreateWatchEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 func validateCreateWatchEvent(req createWatchEventRequest) string {
+	if req.MediaType == "series" {
+		return "series-level watch events are not supported; mark progress per season or episode"
+	}
 	if !validWatchEventMediaTypes[req.MediaType] {
-		return "mediaType must be 'movie', 'episode', 'series', or 'season'"
+		return "mediaType must be 'movie', 'episode', or 'season'"
 	}
 	if req.MediaID <= 0 {
 		return "mediaId must be positive"
@@ -110,7 +127,7 @@ func (h *Handlers) processWatchEvent(userID string, req createWatchEventRequest,
 		watchedAt = &now
 	}
 
-	_, err = h.watchEventStore.Create(ctx, store.WatchEventCreate{
+	input := store.WatchEventCreate{
 		ID:            watchEventID,
 		UserID:        userID,
 		MediaType:     req.MediaType,
@@ -123,13 +140,16 @@ func (h *Handlers) processWatchEvent(userID string, req createWatchEventRequest,
 		WatchedAt:     watchedAt,
 		Timezone:      tz,
 		Meta:          meta,
-	})
-	if err != nil {
-		// Duplicate calls are possible for client-side retries; we ignore them
-		if errors.Is(err, store.ErrDuplicateWatchEvent) {
-			log.Info().Str("watchEventID", watchEventID).Msg("duplicate watch event attempted, skipping insert")
-			return
-		}
+	}
+
+	// MarkSeason transactionally clears prior per-episode rows so the
+	// watchlist SUM + COUNT aggregation never double-counts. Other types
+	// go through plain UPSERT.
+	writeFn := h.watchEventStore.Create
+	if req.MediaType == "season" {
+		writeFn = h.watchEventStore.MarkSeason
+	}
+	if _, err := writeFn(ctx, input); err != nil {
 		log.Error().Err(err).Str("mediaType", req.MediaType).Int("mediaId", req.MediaID).Msg("failed to create watch event")
 		return
 	}
@@ -199,27 +219,41 @@ func (h *Handlers) GetWatchProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type episodeProgress struct {
-		ID            string     `json:"id"`
-		SeasonNumber  *int       `json:"seasonNumber"`
-		EpisodeNumber *int       `json:"episodeNumber"`
-		WatchedAt     *time.Time `json:"watchedAt,omitempty"`
-	}
-
-	episodes := make([]episodeProgress, 0, len(events))
+	seasons := make([]progressSeasonEvent, 0)
+	episodes := make([]progressEpisodeEvent, 0)
 	for _, ev := range events {
-		episodes = append(episodes, episodeProgress{
-			ID:            ev.ID,
-			SeasonNumber:  ev.SeasonNumber,
-			EpisodeNumber: ev.EpisodeNumber,
-			WatchedAt:     ev.WatchedAt,
-		})
+		switch ev.MediaType {
+		case "season":
+			if ev.SeasonNumber == nil {
+				continue
+			}
+			ec := 0
+			if ev.EpisodeCount != nil {
+				ec = *ev.EpisodeCount
+			}
+			seasons = append(seasons, progressSeasonEvent{
+				ID:           ev.ID,
+				SeasonNumber: *ev.SeasonNumber,
+				EpisodeCount: ec,
+				CreatedAt:    ev.CreatedAt,
+			})
+		case "episode":
+			if ev.SeasonNumber == nil || ev.EpisodeNumber == nil {
+				continue
+			}
+			episodes = append(episodes, progressEpisodeEvent{
+				ID:            ev.ID,
+				SeasonNumber:  *ev.SeasonNumber,
+				EpisodeNumber: *ev.EpisodeNumber,
+				CreatedAt:     ev.CreatedAt,
+			})
+		}
 	}
 
 	httputil.JSON(w, http.StatusOK, map[string]any{
-		"seriesId": seriesID,
-		"episodes": episodes,
-		"total":    len(episodes),
+		"seriesId":      seriesID,
+		"seasonEvents":  seasons,
+		"episodeEvents": episodes,
 	}, 0)
 }
 

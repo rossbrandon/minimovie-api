@@ -64,10 +64,10 @@ func (s *StatsStore) GetStats(ctx context.Context, userID string) (*StatsResult,
 	if err := s.pool.QueryRow(ctx,
 		`select coalesce(sum(case
 			when media_type = 'episode' then 1
-			when media_type in ('season', 'series') then coalesce(episode_count, 1)
+			when media_type = 'season' then coalesce(episode_count, 1)
 			else 0
 		end), 0)
-		from watch_event where user_id = $1 and media_type in ('episode', 'season', 'series')`,
+		from watch_event where user_id = $1 and media_type in ('episode', 'season')`,
 		userID,
 	).Scan(&result.TotalEpisodesWatched); err != nil {
 		log.Warn().Err(err).Msg("stats: failed to query episodes watched")
@@ -99,7 +99,11 @@ func (s *StatsStore) GetStats(ctx context.Context, userID string) (*StatsResult,
 	monthRows, err := s.pool.Query(ctx,
 		`select to_char(date_trunc('month', watched_at at time zone 'UTC'), 'YYYY-MM') as month,
 		        count(*) filter (where media_type = 'movie') as movies,
-		        count(*) filter (where media_type = 'episode') as episodes
+		        coalesce(sum(case
+		            when media_type = 'episode' then 1
+		            when media_type = 'season' then coalesce(episode_count, 1)
+		            else 0
+		        end), 0) as episodes
 		 from watch_event where user_id = $1 and watched_at is not null
 		 group by month order by month desc limit 24`,
 		userID,

@@ -54,6 +54,7 @@ func truncateAll(t *testing.T) {
 	ctx := context.Background()
 	tables := []string{
 		"user_achievement", "watch_event", "watchlist_item",
+		"series_metadata",
 		"auth_code", "sessions", "oauth_accounts",
 		"provider_notifications_seen", "users",
 	}
