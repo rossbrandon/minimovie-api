@@ -419,29 +419,25 @@ func (h *Handlers) syncWatchlistItem(ctx context.Context, userID, mediaType stri
 		log.Warn().Err(err).Str("mediaType", lookupType).Int("mediaId", lookupID).Msg("watchlist check failed during sync")
 		return
 	}
-	if existing != nil {
-		if err := h.watchlistStore.UpdateSummary(ctx, userID, lookupType, lookupID); err != nil {
-			log.Warn().Err(err).Str("mediaType", lookupType).Int("mediaId", lookupID).Msg("watchlist UpdateSummary failed")
-		}
-		return
-	}
 
-	// When the incoming watch event is for an episode/season, meta describes
-	// that entity. The watchlist row we're about to create is at the series
-	// level (per resolveWatchlistTarget), so re-resolve series metadata to
-	// avoid stamping the row with episode title/poster/etc.
-	syncMeta := meta
-	if lookupType != mediaType {
-		resolved, err := h.tmdbResolver.ResolveSeries(ctx, lookupID)
-		if err != nil {
-			log.Warn().Err(err).Int("seriesId", lookupID).Msg("series re-resolve failed during watchlist sync; using event meta")
-		} else {
-			syncMeta = resolved
+	if existing == nil {
+		syncMeta := meta
+		if lookupType != mediaType {
+			resolved, err := h.tmdbResolver.ResolveSeries(ctx, lookupID)
+			if err != nil {
+				log.Warn().Err(err).Int("seriesId", lookupID).Msg("series re-resolve failed during watchlist sync; using event meta")
+			} else {
+				syncMeta = resolved
+			}
+		}
+
+		if _, err := h.watchlistStore.Create(ctx, userID, lookupType, lookupID, "watched", syncMeta); err != nil {
+			log.Warn().Err(err).Str("mediaType", lookupType).Int("mediaId", lookupID).Msg("watchlist auto-add failed; falling through to UpdateSummary")
 		}
 	}
 
-	if _, err := h.watchlistStore.Create(ctx, userID, lookupType, lookupID, "watched", syncMeta); err != nil {
-		log.Warn().Err(err).Str("mediaType", lookupType).Int("mediaId", lookupID).Msg("watchlist auto-add failed")
+	if err := h.watchlistStore.UpdateSummary(ctx, userID, lookupType, lookupID); err != nil {
+		log.Warn().Err(err).Str("mediaType", lookupType).Int("mediaId", lookupID).Msg("watchlist UpdateSummary failed")
 	}
 }
 
