@@ -164,7 +164,7 @@ func (f *fakeWatchlistStore) List(_ context.Context, _ string, _, _ *string) ([]
 func (f *fakeWatchlistStore) Check(_ context.Context, _, _ string, _ int) (*store.WatchlistItem, error) {
 	return f.checkItem, f.checkErr
 }
-func (f *fakeWatchlistStore) Create(_ context.Context, _, _ string, _ int, _ string, _ store.ResolvedMedia) (*store.WatchlistItem, error) {
+func (f *fakeWatchlistStore) Create(_ context.Context, _, _, _ string, _ int, _ string, _ store.ResolvedMedia) (*store.WatchlistItem, error) {
 	return f.createdItem, f.createErr
 }
 func (f *fakeWatchlistStore) UpdateStatus(_ context.Context, _, _, _ string) (*store.WatchlistItem, error) {

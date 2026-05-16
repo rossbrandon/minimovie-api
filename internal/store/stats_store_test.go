@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,9 +18,9 @@ func TestStatsStore_GetStats(t *testing.T) {
 	es := NewWatchEventStore(testPool)
 	ss := NewStatsStore(testPool)
 
-	_, err := ws.Create(ctx, userID, "movie", 1000, "watched", ResolvedMedia{Title: "Movie A", Genres: []string{}})
+	_, err := ws.Create(ctx, uuid.New().String(), userID, "movie", 1000, "watched", ResolvedMedia{Title: "Movie A", Genres: []string{}})
 	require.NoError(t, err)
-	_, err = ws.Create(ctx, userID, "series", 2000, "watched", ResolvedMedia{Title: "Series A", Genres: []string{}})
+	_, err = ws.Create(ctx, uuid.New().String(), userID, "series", 2000, "watched", ResolvedMedia{Title: "Series A", Genres: []string{}})
 	require.NoError(t, err)
 
 	now := time.Now().UTC().Truncate(time.Microsecond)

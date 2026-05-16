@@ -54,7 +54,7 @@ type ResolvedMedia struct {
 type WatchlistRepository interface {
 	List(ctx context.Context, userID string, status, mediaType *string) ([]WatchlistItem, error)
 	Check(ctx context.Context, userID, mediaType string, mediaID int) (*WatchlistItem, error)
-	Create(ctx context.Context, userID, mediaType string, mediaID int, status string, meta ResolvedMedia) (*WatchlistItem, error)
+	Create(ctx context.Context, id, userId, mediaType string, mediaID int, status string, meta ResolvedMedia) (*WatchlistItem, error)
 	UpdateStatus(ctx context.Context, id, userID, status string) (*WatchlistItem, error)
 	UpdateSummary(ctx context.Context, userID, mediaType string, mediaID int) error
 	Delete(ctx context.Context, id, userID string) error
@@ -68,7 +68,7 @@ func NewWatchlistStore(pool *pgxpool.Pool) *WatchlistStore {
 	return &WatchlistStore{pool: pool}
 }
 
-func (s *WatchlistStore) List(ctx context.Context, userID string, status, mediaType *string) ([]WatchlistItem, error) {
+func (s *WatchlistStore) List(ctx context.Context, userId string, status, mediaType *string) ([]WatchlistItem, error) {
 	defer metrics.TrackDbDuration(ctx, "watchlist.list")()
 	// LEFT JOIN to series_metadata leaves movie rows with NULL totals.
 	// Sort puts the most recent interaction first; id breaks timestamp ties.
@@ -81,7 +81,7 @@ func (s *WatchlistStore) List(ctx context.Context, userID string, status, mediaT
 	          from watchlist_item w
 	          left join series_metadata sm on sm.series_id = w.media_id and w.media_type = 'series'
 	          where w.user_id = $1`
-	args := []any{userID}
+	args := []any{userId}
 
 	if status != nil {
 		args = append(args, *status)
@@ -131,11 +131,11 @@ func (s *WatchlistStore) List(ctx context.Context, userID string, status, mediaT
 	return items, nil
 }
 
-func (s *WatchlistStore) Check(ctx context.Context, userID, mediaType string, mediaID int) (*WatchlistItem, error) {
+func (s *WatchlistStore) Check(ctx context.Context, userId, mediaType string, mediaId int) (*WatchlistItem, error) {
 	defer metrics.TrackDbDuration(ctx, "watchlist.check")()
 	query := `select id, status from watchlist_item where user_id = $1 and media_type = $2 and media_id = $3`
 	var item WatchlistItem
-	err := s.pool.QueryRow(ctx, query, userID, mediaType, mediaID).Scan(&item.ID, &item.Status)
+	err := s.pool.QueryRow(ctx, query, userId, mediaType, mediaId).Scan(&item.ID, &item.Status)
 	if err == pgx.ErrNoRows {
 		return nil, nil
 	}
@@ -145,18 +145,18 @@ func (s *WatchlistStore) Check(ctx context.Context, userID, mediaType string, me
 	return &item, nil
 }
 
-func (s *WatchlistStore) Create(ctx context.Context, userID, mediaType string, mediaID int, status string, meta ResolvedMedia) (*WatchlistItem, error) {
+func (s *WatchlistStore) Create(ctx context.Context, id, userId, mediaType string, mediaId int, status string, meta ResolvedMedia) (*WatchlistItem, error) {
 	defer metrics.TrackDbDuration(ctx, "watchlist.create")()
 	query := `
-		insert into watchlist_item (user_id, media_type, media_id, media_title, poster_path, status,
+		insert into watchlist_item (id, user_id, media_type, media_id, media_title, poster_path, status,
 		                            genres, runtime_minutes, vote_average, release_year)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		returning id, media_type, media_id, media_title, poster_path, status,
 		          watch_count, genres, runtime_minutes, vote_average, release_year, added_at, updated_at
 	`
 	var item WatchlistItem
 	err := s.pool.QueryRow(ctx, query,
-		userID, mediaType, mediaID, meta.Title, meta.PosterPath, status,
+		id, userId, mediaType, mediaId, meta.Title, meta.PosterPath, status,
 		meta.Genres, meta.RuntimeMinutes, meta.VoteAverage, meta.ReleaseYear,
 	).Scan(
 		&item.ID, &item.MediaType, &item.MediaID, &item.MediaTitle,
@@ -170,7 +170,7 @@ func (s *WatchlistStore) Create(ctx context.Context, userID, mediaType string, m
 	return &item, nil
 }
 
-func (s *WatchlistStore) UpdateStatus(ctx context.Context, id, userID, status string) (*WatchlistItem, error) {
+func (s *WatchlistStore) UpdateStatus(ctx context.Context, id, userId, status string) (*WatchlistItem, error) {
 	defer metrics.TrackDbDuration(ctx, "watchlist.update_status")()
 	query := `
 		update watchlist_item set status = $1, updated_at = now()
@@ -179,7 +179,7 @@ func (s *WatchlistStore) UpdateStatus(ctx context.Context, id, userID, status st
 		          watch_count, genres, runtime_minutes, vote_average, release_year, added_at, updated_at
 	`
 	var item WatchlistItem
-	err := s.pool.QueryRow(ctx, query, status, id, userID).Scan(
+	err := s.pool.QueryRow(ctx, query, status, id, userId).Scan(
 		&item.ID, &item.MediaType, &item.MediaID, &item.MediaTitle,
 		&item.PosterPath, &item.Status, &item.WatchCount,
 		&item.Genres, &item.RuntimeMinutes, &item.VoteAverage, &item.ReleaseYear,
@@ -199,20 +199,20 @@ func (s *WatchlistStore) UpdateStatus(ctx context.Context, id, userID, status st
 // seasons_watched counts only seasons the user has fully completed
 // (season-mark OR episode-mark count ≥ season's cached episode_count).
 // Status reverts to 'want_to_watch' when no events remain.
-func (s *WatchlistStore) UpdateSummary(ctx context.Context, userID, mediaType string, mediaID int) error {
+func (s *WatchlistStore) UpdateSummary(ctx context.Context, userId, mediaType string, mediaID int) error {
 	defer metrics.TrackDbDuration(ctx, "watchlist.update_summary")()
 
 	if mediaType == "series" {
-		return s.updateSeriesSummary(ctx, userID, mediaID)
+		return s.updateSeriesSummary(ctx, userId, mediaID)
 	}
-	return s.updateMovieSummary(ctx, userID, mediaID)
+	return s.updateMovieSummary(ctx, userId, mediaID)
 }
 
 // updateSeriesSummary recomputes denormalized progress fields from watch_event for series.
 // season_totals expands the series_metadata season_episode_counts jsonb into one row per season;
 // episode_counts counts the user's episode events per season;
 // complete_seasons is the count of seasons that are fully watched (season-mark or enough episode marks).
-func (s *WatchlistStore) updateSeriesSummary(ctx context.Context, userID string, seriesID int) error {
+func (s *WatchlistStore) updateSeriesSummary(ctx context.Context, userId string, seriesId int) error {
 	query := `
 		with totals as (
 			select coalesce(sum(case when media_type = 'season' then episode_count else 0 end), 0)
@@ -261,12 +261,12 @@ func (s *WatchlistStore) updateSeriesSummary(ctx context.Context, userID string,
 		  and watchlist_item.media_type = 'series'
 		  and watchlist_item.media_id = $2
 	`
-	_, err := s.pool.Exec(ctx, query, userID, seriesID)
+	_, err := s.pool.Exec(ctx, query, userId, seriesId)
 	return err
 }
 
 // updateMovieSummary recomputes denormalized progress fields from watch_event for movies.
-func (s *WatchlistStore) updateMovieSummary(ctx context.Context, userID string, movieID int) error {
+func (s *WatchlistStore) updateMovieSummary(ctx context.Context, userId string, movieId int) error {
 	query := `
 		with e as (
 			select
@@ -285,13 +285,13 @@ func (s *WatchlistStore) updateMovieSummary(ctx context.Context, userID string, 
 		  and watchlist_item.media_type = 'movie'
 		  and watchlist_item.media_id = $2
 	`
-	_, err := s.pool.Exec(ctx, query, userID, movieID)
+	_, err := s.pool.Exec(ctx, query, userId, movieId)
 	return err
 }
 
-func (s *WatchlistStore) Delete(ctx context.Context, id, userID string) error {
+func (s *WatchlistStore) Delete(ctx context.Context, id, userId string) error {
 	defer metrics.TrackDbDuration(ctx, "watchlist.delete")()
-	tag, err := s.pool.Exec(ctx, `delete from watchlist_item where id = $1 and user_id = $2`, id, userID)
+	tag, err := s.pool.Exec(ctx, `delete from watchlist_item where id = $1 and user_id = $2`, id, userId)
 	if err != nil {
 		return err
 	}

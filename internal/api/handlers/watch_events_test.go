@@ -29,7 +29,8 @@ func TestCreateWatchEvent_Movie(t *testing.T) {
 	require.Equal(t, http.StatusAccepted, w.Code)
 	var resp map[string]any
 	decodeJSON(t, w, &resp)
-	assert.Equal(t, "accepted", resp["status"])
+	assert.NotEmpty(t, resp["id"], "response should carry the deterministic watch event id")
+	assert.NotEmpty(t, resp["watchlistItemId"], "response should carry the synchronous watchlist item id")
 }
 
 func TestCreateWatchEvent_InvalidTimezone(t *testing.T) {

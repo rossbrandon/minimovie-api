@@ -117,7 +117,6 @@ func NewRouter(h *handlers.Handlers, cfg *config.Config, sessionStore store.Sess
 			r.Delete("/watchlist/{id}", h.RemoveFromWatchlist)
 
 			r.Get("/progress/{seriesId}", h.GetWatchProgress)
-			r.Post("/progress", h.MarkEpisodeWatched)
 
 			r.Get("/watch-events", h.ListWatchEvents)
 			r.Post("/watch-events", h.CreateWatchEvent)

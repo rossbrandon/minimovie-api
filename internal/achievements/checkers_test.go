@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/stretchr/testify/assert"
@@ -82,7 +83,7 @@ func TestCheckCenturyClub(t *testing.T) {
 	we := store.NewWatchEventStore(testPool)
 
 	for i := 1; i <= 99; i++ {
-		_, err := wl.Create(ctx, userID, "movie", i, "watched", store.ResolvedMedia{
+		_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", i, "watched", store.ResolvedMedia{
 			Title:  fmt.Sprintf("Movie %d", i),
 			Genres: []string{},
 		})
@@ -92,7 +93,7 @@ func TestCheckCenturyClub(t *testing.T) {
 	earned, _, _, _ := checkCenturyClub(ctx, userID, wl, we)
 	assert.False(t, earned, "99 movies should not earn century club")
 
-	_, err := wl.Create(ctx, userID, "movie", 100, "watched", store.ResolvedMedia{
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 100, "watched", store.ResolvedMedia{
 		Title:  "Movie 100",
 		Genres: []string{},
 	})
@@ -168,7 +169,7 @@ func TestCheckCriticsPick(t *testing.T) {
 
 	vote := float32(8.5)
 	for i := 1; i <= 9; i++ {
-		_, err := wl.Create(ctx, userID, "movie", i, "watched", store.ResolvedMedia{
+		_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", i, "watched", store.ResolvedMedia{
 			Title:       fmt.Sprintf("Great Movie %d", i),
 			Genres:      []string{},
 			VoteAverage: &vote,
@@ -179,7 +180,7 @@ func TestCheckCriticsPick(t *testing.T) {
 	earned, _, _, _ := checkCriticsPick(ctx, userID, wl, we)
 	assert.False(t, earned, "9 high-rated movies should not earn critics pick")
 
-	_, err := wl.Create(ctx, userID, "movie", 10, "watched", store.ResolvedMedia{
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 10, "watched", store.ResolvedMedia{
 		Title:       "Great Movie 10",
 		Genres:      []string{},
 		VoteAverage: &vote,
@@ -201,7 +202,7 @@ func TestCheckTimeTraveler(t *testing.T) {
 	decades := []int{1970, 1985, 1993, 2004}
 	for i, year := range decades {
 		y := year
-		_, err := wl.Create(ctx, userID, "movie", i+1, "watched", store.ResolvedMedia{
+		_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", i+1, "watched", store.ResolvedMedia{
 			Title:       fmt.Sprintf("Movie from %d", year),
 			Genres:      []string{},
 			ReleaseYear: &y,
@@ -213,7 +214,7 @@ func TestCheckTimeTraveler(t *testing.T) {
 	assert.False(t, earned, "4 decades should not earn time traveler")
 
 	fifthYear := 2015
-	_, err := wl.Create(ctx, userID, "movie", 5, "watched", store.ResolvedMedia{
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 5, "watched", store.ResolvedMedia{
 		Title:       "Movie from 2015",
 		Genres:      []string{},
 		ReleaseYear: &fifthYear,
