@@ -20,6 +20,8 @@ type Config struct {
 	MiniMovieUiSecret      string
 	DatabaseURL            string
 	MaxTmdbFetchPerRequest int
+	DbMaxConns             int
+	DbMinConns             int
 	OTelEnabled            bool
 	CacheMaxAge            int
 	AnthropicApiKey        string
@@ -51,6 +53,8 @@ const defaultLogLevel = "info"
 const defaultTmdbBaseUrl = "https://api.themoviedb.org/3"
 const defaultTmdbTimeout int = 10
 const defaultMaxTmdbFetchPerRequest int = 10
+const defaultDbMaxConns int = 20
+const defaultDbMinConns int = 5
 const defaultCacheMaxAge int = 3600
 const defaultAugurModel = "claude-sonnet-4-6"
 const defaultAugurMaxTokens int = 4096
@@ -122,6 +126,26 @@ func Load() (*Config, error) {
 			return nil, errors.New("MAX_TMDB_FETCH_PER_REQUEST is not a valid integer")
 		}
 		maxTmdbFetchPerRequest = maxTmdbFetchPerRequestInt
+	}
+
+	dbMaxConnsStr := os.Getenv("DB_MAX_CONNS")
+	dbMaxConns := defaultDbMaxConns
+	if dbMaxConnsStr != "" {
+		dbMaxConnsInt, err := strconv.Atoi(dbMaxConnsStr)
+		if err != nil {
+			return nil, errors.New("DB_MAX_CONNS is not a valid integer")
+		}
+		dbMaxConns = dbMaxConnsInt
+	}
+
+	dbMinConnsStr := os.Getenv("DB_MIN_CONNS")
+	dbMinConns := defaultDbMinConns
+	if dbMinConnsStr != "" {
+		dbMinConnsInt, err := strconv.Atoi(dbMinConnsStr)
+		if err != nil {
+			return nil, errors.New("DB_MIN_CONNS is not a valid integer")
+		}
+		dbMinConns = dbMinConnsInt
 	}
 
 	otelEnabled := os.Getenv("OTEL_ENABLED") == "true"
@@ -264,6 +288,8 @@ func Load() (*Config, error) {
 		MiniMovieUiSecret:      miniMovieUiSecret,
 		DatabaseURL:            databaseURL,
 		MaxTmdbFetchPerRequest: maxTmdbFetchPerRequest,
+		DbMaxConns:             dbMaxConns,
+		DbMinConns:             dbMinConns,
 		OTelEnabled:            otelEnabled,
 		CacheMaxAge:            cacheMaxAge,
 		AnthropicApiKey:        anthropicApiKey,

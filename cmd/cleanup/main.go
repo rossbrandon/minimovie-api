@@ -23,7 +23,10 @@ func main() {
 
 	ctx := context.Background()
 
-	pool, err := store.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := store.NewPool(ctx, cfg.DatabaseURL, store.PoolConfig{
+		MaxConns: cfg.DbMaxConns,
+		MinConns: cfg.DbMinConns,
+	})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}

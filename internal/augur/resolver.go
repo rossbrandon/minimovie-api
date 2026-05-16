@@ -3,7 +3,9 @@ package augur
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	augur "github.com/rossbrandon/augur-go"
@@ -12,6 +14,10 @@ import (
 )
 
 const augurQueryTypePerson = "person"
+const sfGroupName = "augur_person"
+const bgPersistTaskName = "augur_person"
+const augurCacheReadTimeout = 3 * time.Second
+const augurCacheWriteTimeout = 5 * time.Second
 
 type personInsights struct {
 	NetWorth        int64    `json:"netWorth" augur:"required,desc:Estimated net worth in USD"`
@@ -30,22 +36,54 @@ type cachedResult struct {
 
 func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name string, bypassCache bool) (*PersonInterestingInfo, error) {
 	if !bypassCache {
-		data, _, err := r.store.Get(ctx, "person", personID)
-		if err == nil && data != nil {
-			var cached cachedResult
-			if err := json.Unmarshal(data, &cached); err == nil && cached.Data != nil {
-				if metrics.M != nil {
-					metrics.M.RecordCacheHit(ctx, "interesting_info")
-				}
-				log.Info().Int("person_id", personID).Msg("serving person insights from cache")
-				return r.buildPersonInterestingInfo(&cached), nil
-			}
-		}
-		if metrics.M != nil {
-			metrics.M.RecordCacheMiss(ctx, "interesting_info")
+		if cached, ok := r.readCache(ctx, personID); ok {
+			return r.buildPersonInterestingInfo(cached), nil
 		}
 	}
 
+	key := sfGroupName + ":" + strconv.Itoa(personID)
+	v, err, shared := r.sf.Do(key, func() (any, error) {
+		return r.fetchAndCache(ctx, personID, name)
+	})
+	if metrics.M != nil {
+		metrics.M.RecordSingleflight(ctx, sfGroupName, shared)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	cached := v.(*cachedResult)
+	return r.buildPersonInterestingInfo(cached), nil
+}
+
+func (r *Resolver) readCache(ctx context.Context, personID int) (*cachedResult, bool) {
+	readCtx, cancel := context.WithTimeout(ctx, augurCacheReadTimeout)
+	defer cancel()
+
+	data, _, err := r.store.Get(readCtx, "person", personID)
+	if err != nil || data == nil {
+		if metrics.M != nil {
+			metrics.M.RecordCacheMiss(ctx, "interesting_info")
+		}
+		return nil, false
+	}
+
+	var cached cachedResult
+	if err := json.Unmarshal(data, &cached); err != nil || cached.Data == nil {
+		if metrics.M != nil {
+			metrics.M.RecordCacheMiss(ctx, "interesting_info")
+		}
+		return nil, false
+	}
+
+	if metrics.M != nil {
+		metrics.M.RecordCacheHit(ctx, "interesting_info")
+	}
+	log.Info().Int("person_id", personID).Msg("serving person insights from cache")
+	return &cached, true
+}
+
+func (r *Resolver) fetchAndCache(ctx context.Context, personID int, name string) (*cachedResult, error) {
 	log.Info().Int("person_id", personID).Str("name", name).Msg("fetching person insights from augur")
 
 	start := time.Now()
@@ -60,6 +98,16 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 		},
 	})
 	duration := time.Since(start)
+
+	if metrics.M != nil {
+		if deadline, ok := ctx.Deadline(); ok {
+			outcome := "success"
+			if err != nil {
+				outcome = "error"
+			}
+			metrics.M.RecordAugurCtxRemaining(ctx, outcome, time.Until(deadline))
+		}
+	}
 
 	if err != nil {
 		if metrics.M != nil {
@@ -99,24 +147,44 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 	}
 
 	meta := buildMeta(resp.Meta)
-	cached := cachedResult{
+	cached := &cachedResult{
 		Data:  resp.Data,
 		Meta:  meta,
 		Notes: resp.Notes,
 	}
 
-	jsonData, err := json.Marshal(cached)
-	if err != nil {
-		log.Error().Err(err).Int("person_id", personID).Msg("failed to marshal cached result")
-	} else {
-		if setErr := r.store.Set(ctx, "person", personID, name, jsonData); setErr != nil {
-			log.Error().Err(setErr).Int("person_id", personID).Msg("failed to persist interesting info")
-		} else if metrics.M != nil {
-			metrics.M.RecordCacheWrite(ctx, "interesting_info")
-		}
+	jsonData, marshalErr := json.Marshal(cached)
+	if marshalErr != nil {
+		log.Error().Err(marshalErr).Int("person_id", personID).Msg("failed to marshal cached result")
+		return cached, nil
 	}
 
-	return r.buildPersonInterestingInfo(&cached), nil
+	r.persistCacheAsync(ctx, personID, name, jsonData)
+
+	return cached, nil
+}
+
+func (r *Resolver) persistCacheAsync(ctx context.Context, personID int, name string, data json.RawMessage) {
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), augurCacheWriteTimeout)
+		defer cancel()
+
+		start := time.Now()
+		err := r.store.Set(bgCtx, "person", personID, name, data)
+		duration := time.Since(start)
+		outcome := "success"
+		if err != nil {
+			outcome = "error"
+			if errors.Is(err, context.DeadlineExceeded) {
+				outcome = "deadline_exceeded"
+			}
+			log.Error().Err(err).Str("outcome", outcome).Int("person_id", personID).Msg("failed to persist interesting info")
+		}
+		if metrics.M != nil {
+			metrics.M.RecordCacheWriteOutcome(bgCtx, "interesting_info", outcome)
+			metrics.M.RecordBgPersist(bgCtx, bgPersistTaskName, outcome, duration)
+		}
+	}()
 }
 
 func buildMeta(augurMeta map[string]*augur.FieldMeta) map[string]*FieldMeta {

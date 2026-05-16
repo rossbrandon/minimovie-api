@@ -2,14 +2,22 @@ package age
 
 import (
 	"context"
+	"errors"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/rossbrandon/minimovie-api/internal/metrics"
 	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/singleflight"
 )
+
+const sfGroupName = "tmdb_person"
+const bgPersistTaskName = "age_people"
 
 const (
 	PriorityDirector = 1
@@ -37,6 +45,7 @@ type Resolver struct {
 	personDB   *store.PersonStore
 	tmdbClient *tmdb.Client
 	maxFetch   int
+	sf         singleflight.Group
 }
 
 func New(ctx context.Context, personDB *store.PersonStore, tmdbClient *tmdb.Client, cfg Config) (*Resolver, error) {
@@ -70,6 +79,10 @@ func NewResolver(cache store.PersonCache, personDB *store.PersonStore, tmdbClien
 func (r *Resolver) Resolve(ctx context.Context, people []PersonRef) map[int]store.PersonDates {
 	if len(people) == 0 {
 		return make(map[int]store.PersonDates)
+	}
+
+	if metrics.M != nil {
+		metrics.M.RecordAgeResolveFanout(ctx, routeFromContext(ctx), len(people))
 	}
 
 	nameMap := buildNameMap(people)
@@ -199,20 +212,30 @@ func (r *Resolver) fetchFromApi(ctx context.Context, people []PersonRef) map[int
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			person, err := r.tmdbClient.GetPerson(ctx, ref.ID)
+			key := sfGroupName + ":" + strconv.Itoa(ref.ID)
+			v, err, shared := r.sf.Do(key, func() (any, error) {
+				person, err := r.tmdbClient.GetPerson(ctx, ref.ID)
+				if err != nil {
+					return store.PersonDates{}, err
+				}
+				dates := store.PersonDates{
+					DateOfBirth: person.Birthday,
+					Fetched:     true,
+				}
+				if person.Deathday != nil {
+					dates.DateOfDeath = *person.Deathday
+				}
+				return dates, nil
+			})
+			if metrics.M != nil {
+				metrics.M.RecordSingleflight(ctx, sfGroupName, shared)
+			}
 			if err != nil {
 				log.Warn().Err(err).Int("person_id", ref.ID).Msg("failed to fetch person from API during enrichment")
 				return
 			}
 
-			dates := store.PersonDates{
-				DateOfBirth: person.Birthday,
-				Fetched:     true,
-			}
-			if person.Deathday != nil {
-				dates.DateOfDeath = *person.Deathday
-			}
-
+			dates := v.(store.PersonDates)
 			mu.Lock()
 			result[ref.ID] = dates
 			mu.Unlock()
@@ -239,9 +262,29 @@ func (r *Resolver) persistFetched(ctx context.Context, fetched map[int]store.Per
 		defer cancel()
 
 		start := time.Now()
-		if err := r.personDB.UpsertPersonBatch(bgCtx, fetched, nameMap); err != nil {
-			log.Error().Err(err).Msg("failed to batch upsert people to database")
+		err := r.personDB.UpsertPersonBatch(bgCtx, fetched, nameMap)
+		duration := time.Since(start)
+		outcome := "success"
+		if err != nil {
+			outcome = "error"
+			if errors.Is(err, context.DeadlineExceeded) {
+				outcome = "deadline_exceeded"
+			}
+			log.Error().Err(err).Str("outcome", outcome).Dur("duration_ms", duration).Int("fetched_count", len(fetched)).Msg("failed to batch upsert people to database")
+		} else {
+			log.Info().Dur("duration_ms", duration).Int("fetched_count", len(fetched)).Msg("persisted fetched people to database")
 		}
-		log.Info().Dur("duration_ms", time.Since(start)).Int("fetched_count", len(fetched)).Msg("persisted fetched people to database")
+		if metrics.M != nil {
+			metrics.M.RecordBgPersist(bgCtx, bgPersistTaskName, outcome, duration)
+		}
 	}()
+}
+
+func routeFromContext(ctx context.Context) string {
+	if rc := chi.RouteContext(ctx); rc != nil {
+		if pattern := rc.RoutePattern(); pattern != "" {
+			return pattern
+		}
+	}
+	return "unknown"
 }

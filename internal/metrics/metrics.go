@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -31,6 +32,7 @@ type Metrics struct {
 
 	AugurRequestsTotal       metric.Int64Counter
 	AugurRequestDuration     metric.Float64Histogram
+	AugurCtxRemaining        metric.Float64Histogram
 	AugurFieldsTotal         metric.Int64Counter
 	AugurFieldConfidence     metric.Float64Histogram
 	AugurTokensTotal         metric.Int64Counter
@@ -38,6 +40,18 @@ type Metrics struct {
 	WatchlistOperationsTotal metric.Int64Counter
 	WatchEventsTotal         metric.Int64Counter
 	AchievementsEarnedTotal  metric.Int64Counter
+
+	SingleflightTotal     metric.Int64Counter
+	BgPersistDuration     metric.Float64Histogram
+	BgPersistOutcomeTotal metric.Int64Counter
+	PeopleUpsertBatchSize metric.Int64Histogram
+	AgeResolveFanout      metric.Int64Histogram
+
+	DbPoolAcquiredConns        metric.Int64ObservableGauge
+	DbPoolIdleConns            metric.Int64ObservableGauge
+	DbPoolMaxConns             metric.Int64ObservableGauge
+	DbPoolAcquireCount         metric.Int64ObservableCounter
+	DbPoolCanceledAcquireCount metric.Int64ObservableCounter
 }
 
 type Config struct {
@@ -222,6 +236,98 @@ func initMetrics(meter metric.Meter) (*Metrics, error) {
 		return nil, err
 	}
 
+	m.AugurCtxRemaining, err = meter.Float64Histogram("augur_ctx_remaining_seconds",
+		metric.WithDescription("Context budget remaining when Augur returns; trending toward 0 means AUGUR_TIMEOUT is too tight"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(0, 0.5, 1, 2, 5, 10, 15, 20, 30, 45, 60),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.SingleflightTotal, err = meter.Int64Counter("singleflight_total",
+		metric.WithDescription("Singleflight invocations by group and shared status; shared=true means the call piggy-backed on an in-flight call"),
+		metric.WithUnit("{call}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.BgPersistDuration, err = meter.Float64Histogram("bg_persist_duration_seconds",
+		metric.WithDescription("Duration of background persist tasks (cache-warming writes detached from request context)"),
+		metric.WithUnit("s"),
+		metric.WithExplicitBucketBoundaries(0.005, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.BgPersistOutcomeTotal, err = meter.Int64Counter("bg_persist_outcome_total",
+		metric.WithDescription("Outcome of background persist tasks (success|error|deadline_exceeded)"),
+		metric.WithUnit("{task}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.PeopleUpsertBatchSize, err = meter.Int64Histogram("people_upsert_batch_size",
+		metric.WithDescription("Number of rows per UpsertPersonBatch call"),
+		metric.WithUnit("{row}"),
+		metric.WithExplicitBucketBoundaries(1, 2, 5, 10, 25, 50, 100, 250, 500),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.AgeResolveFanout, err = meter.Int64Histogram("age_resolve_people_count",
+		metric.WithDescription("Number of people the age resolver was asked to resolve per request"),
+		metric.WithUnit("{person}"),
+		metric.WithExplicitBucketBoundaries(1, 2, 5, 10, 20, 50, 100),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.DbPoolAcquiredConns, err = meter.Int64ObservableGauge("db_pool_acquired_conns",
+		metric.WithDescription("Number of pgxpool connections currently acquired"),
+		metric.WithUnit("{connection}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.DbPoolIdleConns, err = meter.Int64ObservableGauge("db_pool_idle_conns",
+		metric.WithDescription("Number of pgxpool connections currently idle"),
+		metric.WithUnit("{connection}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.DbPoolMaxConns, err = meter.Int64ObservableGauge("db_pool_max_conns",
+		metric.WithDescription("Configured pgxpool max connections"),
+		metric.WithUnit("{connection}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.DbPoolAcquireCount, err = meter.Int64ObservableCounter("db_pool_acquire_count_total",
+		metric.WithDescription("Cumulative count of pgxpool connection acquisitions"),
+		metric.WithUnit("{acquire}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.DbPoolCanceledAcquireCount, err = meter.Int64ObservableCounter("db_pool_canceled_acquire_count_total",
+		metric.WithDescription("Cumulative count of pgxpool acquisitions canceled by context (signal of pool saturation under timeout pressure)"),
+		metric.WithUnit("{acquire}"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return m, nil
 }
 
@@ -280,9 +386,14 @@ func (m *Metrics) RecordCacheMiss(ctx context.Context, store string) {
 }
 
 func (m *Metrics) RecordCacheWrite(ctx context.Context, store string) {
+	m.RecordCacheWriteOutcome(ctx, store, "success")
+}
+
+func (m *Metrics) RecordCacheWriteOutcome(ctx context.Context, store, outcome string) {
 	m.CacheOperationsTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("operation", "write"),
 		attribute.String("store", store),
+		attribute.String("outcome", outcome),
 	))
 }
 
@@ -363,4 +474,60 @@ func (m *Metrics) RecordAchievementEarned(ctx context.Context, achievementID str
 	m.AchievementsEarnedTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("achievement_id", achievementID),
 	))
+}
+
+func (m *Metrics) RecordSingleflight(ctx context.Context, group string, shared bool) {
+	m.SingleflightTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("group", group),
+		attribute.Bool("shared", shared),
+	))
+}
+
+func (m *Metrics) RecordAugurCtxRemaining(ctx context.Context, outcome string, remaining time.Duration) {
+	if remaining < 0 {
+		remaining = 0
+	}
+	m.AugurCtxRemaining.Record(ctx, remaining.Seconds(), metric.WithAttributes(
+		attribute.String("outcome", outcome),
+	))
+}
+
+func (m *Metrics) RecordBgPersist(ctx context.Context, task, outcome string, duration time.Duration) {
+	m.BgPersistDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(
+		attribute.String("task", task),
+	))
+	m.BgPersistOutcomeTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("task", task),
+		attribute.String("outcome", outcome),
+	))
+}
+
+func (m *Metrics) RecordPeopleUpsertBatchSize(ctx context.Context, size int) {
+	m.PeopleUpsertBatchSize.Record(ctx, int64(size))
+}
+
+func (m *Metrics) RecordAgeResolveFanout(ctx context.Context, route string, count int) {
+	m.AgeResolveFanout.Record(ctx, int64(count), metric.WithAttributes(
+		attribute.String("route", route),
+	))
+}
+
+func (m *Metrics) RegisterDbPoolGauges(pool *pgxpool.Pool) error {
+	meter := otel.GetMeterProvider().Meter(meterName)
+	_, err := meter.RegisterCallback(func(_ context.Context, o metric.Observer) error {
+		stat := pool.Stat()
+		o.ObserveInt64(m.DbPoolAcquiredConns, int64(stat.AcquiredConns()))
+		o.ObserveInt64(m.DbPoolIdleConns, int64(stat.IdleConns()))
+		o.ObserveInt64(m.DbPoolMaxConns, int64(stat.MaxConns()))
+		o.ObserveInt64(m.DbPoolAcquireCount, stat.AcquireCount())
+		o.ObserveInt64(m.DbPoolCanceledAcquireCount, stat.CanceledAcquireCount())
+		return nil
+	},
+		m.DbPoolAcquiredConns,
+		m.DbPoolIdleConns,
+		m.DbPoolMaxConns,
+		m.DbPoolAcquireCount,
+		m.DbPoolCanceledAcquireCount,
+	)
+	return err
 }

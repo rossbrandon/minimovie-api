@@ -982,31 +982,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /users/me/progress/{id}:
-    delete:
-      summary: Unmark episode
-      description: Removes a watch event, effectively unmarking the episode as watched
-      operationId: unmarkEpisode
+  /users/me/media-state:
+    get:
+      summary: Get consolidated media state for the current user
+      description: Returns the user's watchlist state for the given media (movie or series), and watched state for movies. Used to drive media-detail UI such as "in watchlist" and "watched" indicators in a single call.
+      operationId: getMediaState
       security:
         - sessionCookie: []
       parameters:
-        - name: id
-          in: path
+        - name: media_type
+          in: query
           required: true
-          description: Watch event ID
           schema:
             type: string
+            enum:
+              - movie
+              - series
+        - name: media_id
+          in: query
+          required: true
+          schema:
+            type: integer
       responses:
-        "204":
-          description: Episode unmarked
-        "401":
-          description: Not authenticated
+        "200":
+          description: Consolidated media state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaStateResponse"
+        "400":
+          description: Invalid media_type or media_id
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "404":
-          description: Event not found
+        "401":
+          description: Not authenticated
           content:
             application/json:
               schema:
@@ -2139,6 +2150,25 @@ components:
               type: string
             status:
               type: string
+
+    MediaStateResponse:
+      type: object
+      required:
+        - inWatchlist
+        - hasWatched
+      properties:
+        inWatchlist:
+          type: boolean
+          description: Whether the media is in the user's watchlist
+        watchlistItemId:
+          type: string
+          description: Watchlist item ID, present only when inWatchlist is true
+        hasWatched:
+          type: boolean
+          description: Whether the user has a recorded watch event for this media. Only meaningful for movies; always false for series.
+        watchEventId:
+          type: string
+          description: Watch event ID, present only when hasWatched is true
 
     AddWatchlistRequest:
       type: object

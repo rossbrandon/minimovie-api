@@ -32,7 +32,7 @@ create table if not exists people (
     updated_at timestamp default now()
 );
 
-create index if not exists idx_people_fetched on people(fetched);
+create index if not exists idx_people_unfetched on people(id) where not fetched;
 create index if not exists idx_people_dates_covering on people (id) include (date_of_birth, date_of_death, popularity, fetched);
 
 create table if not exists season_cast_cache (

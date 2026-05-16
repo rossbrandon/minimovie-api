@@ -4,11 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rossbrandon/minimovie-api/internal/metrics"
-	"github.com/rs/zerolog/log"
 )
 
 type PersonDates struct {
@@ -79,11 +77,38 @@ func (s *PersonStore) UpsertPersonBatch(ctx context.Context, people map[int]Pers
 	}
 
 	defer metrics.TrackDbDuration(ctx, "write")()
+	if metrics.M != nil {
+		metrics.M.RecordPeopleUpsertBatchSize(ctx, len(people))
+	}
 
-	batch := &pgx.Batch{}
+	ids := make([]int32, 0, len(people))
+	nameArr := make([]string, 0, len(people))
+	dobs := make([]*string, 0, len(people))
+	dods := make([]*string, 0, len(people))
+	fetchedArr := make([]bool, 0, len(people))
+
+	for id, dates := range people {
+		ids = append(ids, int32(id))
+		nameArr = append(nameArr, names[id])
+
+		var dobPtr, dodPtr *string
+		if dates.DateOfBirth != "" {
+			dob := dates.DateOfBirth
+			dobPtr = &dob
+		}
+		if dates.DateOfDeath != "" {
+			dod := dates.DateOfDeath
+			dodPtr = &dod
+		}
+		dobs = append(dobs, dobPtr)
+		dods = append(dods, dodPtr)
+		fetchedArr = append(fetchedArr, dates.Fetched)
+	}
+
 	query := `
 		insert into people (id, name, date_of_birth, date_of_death, fetched, updated_at)
-		values ($1, $2, $3, $4, $5, now())
+		select u.id, u.name, u.dob::date, u.dod::date, u.fetched, now()
+		from unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::bool[]) as u(id, name, dob, dod, fetched)
 		on conflict (id) do update set
 			name = coalesce(excluded.name, people.name),
 			date_of_birth = excluded.date_of_birth,
@@ -92,30 +117,8 @@ func (s *PersonStore) UpsertPersonBatch(ctx context.Context, people map[int]Pers
 			updated_at = now()
 	`
 
-	for id, dates := range people {
-		var dobPtr, dodPtr *string
-		if dates.DateOfBirth != "" {
-			dobPtr = &dates.DateOfBirth
-		}
-		if dates.DateOfDeath != "" {
-			dodPtr = &dates.DateOfDeath
-		}
-
-		name := names[id]
-		batch.Queue(query, id, name, dobPtr, dodPtr, dates.Fetched)
-	}
-
-	results := s.pool.SendBatch(ctx, batch)
-	defer results.Close()
-
-	for range people {
-		if _, err := results.Exec(); err != nil {
-			log.Error().Err(err).Msg("failed to execute batch upsert to people table in database")
-			return err
-		}
-	}
-
-	return nil
+	_, err := s.pool.Exec(ctx, query, ids, nameArr, dobs, dods, fetchedArr)
+	return err
 }
 
 func (s *PersonStore) MarkPeopleStale(ctx context.Context, personIDs []int) (int64, error) {

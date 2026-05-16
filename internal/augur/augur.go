@@ -3,6 +3,7 @@ package augur
 import (
 	augur "github.com/rossbrandon/augur-go"
 	"github.com/rossbrandon/augur-go/providers/claude"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/rossbrandon/minimovie-api/internal/store"
 )
@@ -19,6 +20,7 @@ type Resolver struct {
 	client        *augur.Client
 	store         *store.InterestingInfoStore
 	minConfidence float64
+	sf            singleflight.Group
 }
 
 type Source struct {

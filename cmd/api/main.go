@@ -51,11 +51,20 @@ func main() {
 	}
 
 	// Initialize database connection
-	pool, err := store.NewPool(ctx, cfg.DatabaseURL)
+	pool, err := store.NewPool(ctx, cfg.DatabaseURL, store.PoolConfig{
+		MaxConns: cfg.DbMaxConns,
+		MinConns: cfg.DbMinConns,
+	})
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 	defer pool.Close()
+
+	if metrics.M != nil {
+		if err := metrics.M.RegisterDbPoolGauges(pool); err != nil {
+			log.Warn().Err(err).Msg("Failed to register db pool gauges")
+		}
+	}
 
 	// Initialize stores
 	personStore := store.NewPersonStore(pool)
