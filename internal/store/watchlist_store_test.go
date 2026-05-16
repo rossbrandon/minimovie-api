@@ -215,7 +215,7 @@ func TestWatchlistStore_UpdateSummary_SeriesAggregation(t *testing.T) {
 	require.Len(t, items, 1)
 	assert.Equal(t, 11, items[0].EpisodesWatched, "10 from season mark + 1 episode event")
 	assert.Equal(t, 1, items[0].SeasonsWatched, "season 1 complete; season 2 only 1/10")
-	assert.Equal(t, "watched", items[0].Status, "any event flips status to watched")
+	assert.Equal(t, "in_progress", items[0].Status, "11/30 episodes — not yet watched")
 }
 
 // A season counts as complete when episode marks ≥ its cached episode_count,
@@ -320,7 +320,7 @@ func TestWatchlistStore_UpdateSummary_StatusRevertsOnFullUnwatch(t *testing.T) {
 	items, err := wl.List(ctx, userID, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	assert.Equal(t, "watched", items[0].Status)
+	assert.Equal(t, "in_progress", items[0].Status, "no series_metadata → in_progress for safety")
 
 	require.NoError(t, we.Delete(ctx, ev.ID, userID))
 	require.NoError(t, wl.UpdateSummary(ctx, userID, "series", seriesID))
@@ -408,6 +408,150 @@ func TestWatchlistStore_List_JoinNullForUncachedSeries(t *testing.T) {
 			assert.Nil(t, item.TotalEpisodes, "movies never JOIN to series_metadata")
 		}
 	}
+}
+
+// A fully airing series with all known episodes watched stays in_progress —
+// the show isn't done yet, so the user isn't either.
+func TestWatchlistStore_UpdateSummary_CaughtUpOnAiringSeriesStaysInProgress(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	userID := createTestUser(t)
+	wl := NewWatchlistStore(testPool)
+	we := NewWatchEventStore(testPool)
+	sm := NewSeriesMetadataStore(testPool)
+
+	seriesID := 5300
+	require.NoError(t, sm.Upsert(ctx, &SeriesMetadata{
+		SeriesID:            seriesID,
+		Name:                "Airing",
+		TotalEpisodes:       5,
+		TotalSeasons:        1,
+		SeasonEpisodeCounts: map[int]int{1: 5},
+		InProduction:        true,
+	}))
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Airing", Genres: []string{}})
+	require.NoError(t, err)
+
+	season := 1
+	episodeCount := 5
+	_, err = we.MarkSeason(ctx, WatchEventCreate{
+		UserID: userID, MediaType: "season", MediaID: 6300,
+		SeriesID: &seriesID, SeasonNumber: &season, EpisodeCount: &episodeCount,
+		Timezone: "UTC", Meta: ResolvedMedia{Title: "S1", Genres: []string{}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, wl.UpdateSummary(ctx, userID, "series", seriesID))
+
+	items, err := wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "in_progress", items[0].Status)
+	assert.Nil(t, items[0].FinishedAt, "still airing → no finish date")
+	require.NotNil(t, items[0].StartedAt)
+}
+
+// A finished series fully watched flips to 'watched' and sets finished_at.
+func TestWatchlistStore_UpdateSummary_FinishedSeriesWatchedSetsDates(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	userID := createTestUser(t)
+	wl := NewWatchlistStore(testPool)
+	we := NewWatchEventStore(testPool)
+	sm := NewSeriesMetadataStore(testPool)
+
+	seriesID := 5400
+	require.NoError(t, sm.Upsert(ctx, &SeriesMetadata{
+		SeriesID:            seriesID,
+		Name:                "Done",
+		TotalEpisodes:       3,
+		TotalSeasons:        1,
+		SeasonEpisodeCounts: map[int]int{1: 3},
+		InProduction:        false,
+	}))
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Done", Genres: []string{}})
+	require.NoError(t, err)
+
+	season := 1
+	episodeCount := 3
+	_, err = we.MarkSeason(ctx, WatchEventCreate{
+		UserID: userID, MediaType: "season", MediaID: 6400,
+		SeriesID: &seriesID, SeasonNumber: &season, EpisodeCount: &episodeCount,
+		Timezone: "UTC", Meta: ResolvedMedia{Title: "S1", Genres: []string{}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, wl.UpdateSummary(ctx, userID, "series", seriesID))
+
+	items, err := wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "watched", items[0].Status)
+	require.NotNil(t, items[0].StartedAt)
+	require.NotNil(t, items[0].FinishedAt)
+}
+
+// Movie watch_event sets started_at and finished_at to the same instant.
+// Removing the event clears both back to null and reverts status.
+func TestWatchlistStore_UpdateSummary_MovieSetsAndClearsDates(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	userID := createTestUser(t)
+	wl := NewWatchlistStore(testPool)
+	we := NewWatchEventStore(testPool)
+
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 300, "want_to_watch", ResolvedMedia{Title: "Flick", Genres: []string{}})
+	require.NoError(t, err)
+
+	ev, err := we.Create(ctx, WatchEventCreate{
+		UserID: userID, MediaType: "movie", MediaID: 300,
+		Timezone: "UTC", Meta: ResolvedMedia{Title: "Flick", Genres: []string{}},
+	})
+	require.NoError(t, err)
+	require.NoError(t, wl.UpdateSummary(ctx, userID, "movie", 300))
+
+	items, err := wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "watched", items[0].Status)
+	require.NotNil(t, items[0].StartedAt)
+	require.NotNil(t, items[0].FinishedAt)
+	assert.Equal(t, *items[0].StartedAt, *items[0].FinishedAt, "movie started=finished")
+
+	require.NoError(t, we.Delete(ctx, ev.ID, userID))
+	require.NoError(t, wl.UpdateSummary(ctx, userID, "movie", 300))
+
+	items, err = wl.List(ctx, userID, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, "want_to_watch", items[0].Status)
+	assert.Nil(t, items[0].StartedAt)
+	assert.Nil(t, items[0].FinishedAt)
+}
+
+// UpdateStatus is the explicit-toggle path; a user marking 'watched' with no
+// events must still get finished_at populated so the UI date label can render.
+func TestWatchlistStore_UpdateStatus_HandMarkedWatchedSetsDates(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	userID := createTestUser(t)
+	wl := NewWatchlistStore(testPool)
+
+	item, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 400, "want_to_watch", ResolvedMedia{Title: "Hand", Genres: []string{}})
+	require.NoError(t, err)
+	assert.Nil(t, item.StartedAt)
+	assert.Nil(t, item.FinishedAt)
+
+	updated, err := wl.UpdateStatus(ctx, item.ID, userID, "watched")
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, "watched", updated.Status)
+	require.NotNil(t, updated.StartedAt)
+	require.NotNil(t, updated.FinishedAt)
+
+	reverted, err := wl.UpdateStatus(ctx, item.ID, userID, "want_to_watch")
+	require.NoError(t, err)
+	require.NotNil(t, reverted)
+	assert.Equal(t, "want_to_watch", reverted.Status)
+	assert.Nil(t, reverted.FinishedAt, "revert clears finished_at")
 }
 
 func createOtherUser(t *testing.T) string {

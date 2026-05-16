@@ -173,15 +173,21 @@ func (s *WatchlistStore) Create(ctx context.Context, id, userId, mediaType strin
 func (s *WatchlistStore) UpdateStatus(ctx context.Context, id, userId, status string) (*WatchlistItem, error) {
 	defer metrics.TrackDbDuration(ctx, "watchlist.update_status")()
 	query := `
-		update watchlist_item set status = $1, updated_at = now()
+		update watchlist_item set
+			status = $1,
+			started_at = case when $1 = 'watched' then coalesce(started_at, now()) else started_at end,
+			finished_at = case when $1 = 'watched' then coalesce(finished_at, now()) else null end,
+			updated_at = now()
 		where id = $2 and user_id = $3
 		returning id, media_type, media_id, media_title, poster_path, status,
-		          watch_count, genres, runtime_minutes, vote_average, release_year, added_at, updated_at
+		          started_at, finished_at, last_watched_at, watch_count,
+		          genres, runtime_minutes, vote_average, release_year, added_at, updated_at
 	`
 	var item WatchlistItem
 	err := s.pool.QueryRow(ctx, query, status, id, userId).Scan(
 		&item.ID, &item.MediaType, &item.MediaID, &item.MediaTitle,
-		&item.PosterPath, &item.Status, &item.WatchCount,
+		&item.PosterPath, &item.Status,
+		&item.StartedAt, &item.FinishedAt, &item.LastWatchedAt, &item.WatchCount,
 		&item.Genres, &item.RuntimeMinutes, &item.VoteAverage, &item.ReleaseYear,
 		&item.AddedAt, &item.UpdatedAt,
 	)
@@ -217,10 +223,16 @@ func (s *WatchlistStore) updateSeriesSummary(ctx context.Context, userId string,
 		with totals as (
 			select coalesce(sum(case when media_type = 'season' then episode_count else 0 end), 0)
 				+ sum(case when media_type = 'episode' then 1 else 0 end) as episodes_watched,
+				min(coalesce(watched_at, created_at)) as first_watched_at,
 				max(coalesce(watched_at, created_at)) as last_watched_at,
 				count(*) as total_events
 			from watch_event
 			where user_id = $1 and series_id = $2 and media_type in ('season', 'episode')
+		),
+		metadata as (
+			select total_episodes, in_production
+			from series_metadata
+			where series_id = $2
 		),
 		season_totals as (
 			select (kv.key)::int as season_number, (kv.value)::int as total
@@ -244,19 +256,34 @@ func (s *WatchlistStore) updateSeriesSummary(ctx context.Context, userId string,
 			)
 			or (st.total > 0
 				and coalesce((select cnt from episode_counts ec where ec.season_number = st.season_number), 0) >= st.total)
+		),
+		derived as (
+			select
+				coalesce(totals.episodes_watched, 0) as episodes_watched,
+				coalesce(complete_seasons.cnt, 0) as seasons_watched,
+				totals.first_watched_at,
+				totals.last_watched_at,
+				case
+					when coalesce(totals.total_events, 0) = 0 then 'want_to_watch'
+					when metadata.total_episodes is null then 'in_progress'
+					when totals.episodes_watched < metadata.total_episodes then 'in_progress'
+					when coalesce(metadata.in_production, false) then 'in_progress'
+					else 'watched'
+				end as status
+			from totals
+			left join complete_seasons on true
+			left join metadata on true
 		)
 		update watchlist_item set
-			episodes_watched = coalesce(totals.episodes_watched, 0)::int,
-			seasons_watched = coalesce(complete_seasons.cnt, 0)::int,
-			watch_count = coalesce(totals.episodes_watched, 0)::int,
-			last_watched_at = totals.last_watched_at,
-			status = case
-				when coalesce(totals.total_events, 0) = 0 then 'want_to_watch'
-				else 'watched'
-			end,
+			episodes_watched = derived.episodes_watched,
+			seasons_watched = derived.seasons_watched,
+			watch_count = derived.episodes_watched,
+			last_watched_at = derived.last_watched_at,
+			started_at = derived.first_watched_at,
+			finished_at = case when derived.status = 'watched' then derived.last_watched_at else null end,
+			status = derived.status,
 			updated_at = now()
-		from totals
-		left join complete_seasons on true
+		from derived
 		where watchlist_item.user_id = $1
 		  and watchlist_item.media_type = 'series'
 		  and watchlist_item.media_id = $2
@@ -276,8 +303,10 @@ func (s *WatchlistStore) updateMovieSummary(ctx context.Context, userId string, 
 			where user_id = $1 and media_type = 'movie' and media_id = $2
 		)
 		update watchlist_item set
-			watch_count = coalesce(e.cnt, 0)::int,
+			watch_count = coalesce(e.cnt, 0),
 			last_watched_at = e.last_watched_at,
+			started_at = case when coalesce(e.cnt, 0) > 0 then e.last_watched_at else null end,
+			finished_at = case when coalesce(e.cnt, 0) > 0 then e.last_watched_at else null end,
 			status = case when coalesce(e.cnt, 0) = 0 then 'want_to_watch' else 'watched' end,
 			updated_at = now()
 		from e

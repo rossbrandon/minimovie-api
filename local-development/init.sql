@@ -150,7 +150,7 @@ create table if not exists watchlist_item (
     media_id integer not null,
     media_title text not null,
     poster_path text,
-    status text not null default 'want_to_watch' check (status in ('want_to_watch', 'watched')),
+    status text not null default 'want_to_watch' check (status in ('want_to_watch', 'in_progress', 'watched')),
     started_at timestamptz,
     finished_at timestamptz,
     last_watched_at timestamptz,
