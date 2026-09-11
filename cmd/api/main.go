@@ -90,6 +90,7 @@ func main() {
 		BaseURL:     cfg.TmdbBaseUrl,
 		Timeout:     cfg.TmdbTimeout,
 		AccessToken: cfg.TmdbAccessToken,
+		RateLimit:   cfg.TmdbRateLimit,
 	})
 	tmdbResolver := tmdb.NewMetadataResolver(tmdbClient)
 

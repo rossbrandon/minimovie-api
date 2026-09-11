@@ -26,7 +26,7 @@ type CollectionPart struct {
 }
 
 func (c *Client) GetCollection(ctx context.Context, id int) (*Collection, error) {
-	log.Info().Int("id", id).Msg("Getting collection from TMDB")
+	log.Debug().Int("id", id).Msg("Getting collection from TMDB")
 	path := fmt.Sprintf("/collection/%d", id)
 
 	body, err := c.get(ctx, path)

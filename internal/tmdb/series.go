@@ -26,6 +26,7 @@ type Series struct {
 	NumberOfEpisodes    int                 `json:"number_of_episodes"`
 	EpisodeRunTime      []int               `json:"episode_run_time"`
 	VoteAverage         float64             `json:"vote_average"`
+	Popularity          float64             `json:"popularity"`
 	OriginalName        string              `json:"original_name"`
 	OriginalLanguage    string              `json:"original_language"`
 	OriginCountry       []string            `json:"origin_country"`
@@ -68,7 +69,7 @@ type Season struct {
 }
 
 func (c *Client) GetSeries(ctx context.Context, id int) (*Series, error) {
-	log.Info().Int("id", id).Msg("Getting series from TMDB")
+	log.Debug().Int("id", id).Msg("Getting series from TMDB")
 	extras := "watch/providers,aggregate_credits"
 	path := fmt.Sprintf("/tv/%d?append_to_response=%s", id, extras)
 
@@ -111,7 +112,7 @@ type SeriesWithSeasons struct {
 const maxAppendItems = 20
 
 func (c *Client) GetSeriesWithSeasons(ctx context.Context, id int) (*SeriesWithSeasons, error) {
-	log.Info().Int("id", id).Msg("Getting series with seasons from TMDB")
+	log.Debug().Int("id", id).Msg("Getting series with seasons from TMDB")
 
 	maxSeasonsFirstBatch := maxAppendItems - 1 // reserve slot for aggregate_credits
 	parts := []string{"aggregate_credits"}

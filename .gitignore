@@ -36,3 +36,10 @@ tmp/
 
 # OS generated files
 .DS_Store
+
+# Binaries
+bin/
+
+# Catalog seed: export files, logs, state, dumps
+local-development/exports/
+*.dump

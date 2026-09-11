@@ -49,8 +49,8 @@ func (s *SessionStore) GetByTokenHash(ctx context.Context, tokenHash string) (*S
 	`
 	var sw SessionWithUser
 	err := s.pool.QueryRow(ctx, query, tokenHash).Scan(
-		&sw.Session.ID, &sw.Session.TokenHash, &sw.Session.UserID,
-		&sw.Session.ExpiresAt, &sw.Session.CreatedAt,
+		&sw.ID, &sw.TokenHash, &sw.UserID,
+		&sw.ExpiresAt, &sw.CreatedAt,
 		&sw.User.ID, &sw.User.Username, &sw.User.GivenName, &sw.User.AvatarURL, &sw.User.CreatedAt, &sw.User.UpdatedAt,
 	)
 	if err == pgx.ErrNoRows {

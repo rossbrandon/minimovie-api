@@ -24,7 +24,7 @@ func TestSessionStore_CreateAndGet(t *testing.T) {
 	sw, err := s.GetByTokenHash(ctx, "token-hash-1")
 	require.NoError(t, err)
 	require.NotNil(t, sw)
-	assert.Equal(t, sess.ID, sw.Session.ID)
+	assert.Equal(t, sess.ID, sw.ID)
 	assert.Equal(t, userID, sw.User.ID)
 }
 

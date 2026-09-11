@@ -18,7 +18,7 @@ var testPool *pgxpool.Pool
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 	pgContainer, err := postgres.Run(ctx,
-		"postgres:16-alpine",
+		"pgvector/pgvector:0.8.6-pg18",
 		postgres.WithInitScripts("../../local-development/init.sql"),
 		postgres.WithDatabase("minimovie_test"),
 		postgres.WithUsername("test"),
@@ -54,7 +54,7 @@ func truncateAll(t *testing.T) {
 	ctx := context.Background()
 	tables := []string{
 		"user_achievement", "watch_event", "watchlist_item",
-		"series_metadata",
+		"movies", "series", "seasons", "episodes", "collections", "people",
 		"auth_code", "sessions", "oauth_accounts",
 		"provider_notifications_seen", "users",
 	}

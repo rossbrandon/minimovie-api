@@ -1,4 +1,4 @@
-.PHONY: start watch build sync build-sync fmt lint test test-cover local-up local-down
+.PHONY: start watch build sync build-sync seed fmt lint test test-cover local-up local-down
 
 start:
 	@set -a && source .env && go run cmd/api/main.go
@@ -33,3 +33,5 @@ local-up:
 local-down:
 	docker compose -f local-development/docker-compose.yml down
 
+seed:
+	go build -o bin/seed ./cmd/seed

@@ -29,7 +29,7 @@ type EpisodeDetails struct {
 }
 
 func (c *Client) GetEpisode(ctx context.Context, seriesID, seasonNumber, episodeNumber int) (*EpisodeDetails, error) {
-	log.Info().Int("series_id", seriesID).Int("season", seasonNumber).Int("episode", episodeNumber).Msg("Getting episode from TMDB")
+	log.Debug().Int("series_id", seriesID).Int("season", seasonNumber).Int("episode", episodeNumber).Msg("Getting episode from TMDB")
 	extras := "credits"
 	path := fmt.Sprintf("/tv/%d/season/%d/episode/%d?append_to_response=%s", seriesID, seasonNumber, episodeNumber, extras)
 

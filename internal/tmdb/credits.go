@@ -1,24 +1,45 @@
 package tmdb
 
+// TMDB crew job titles.
+const (
+	JobDirector          = "Director"
+	JobScreenplay        = "Screenplay"
+	JobWriter            = "Writer"
+	JobStory             = "Story"
+	JobProducer          = "Producer"
+	JobExecutiveProducer = "Executive Producer"
+	JobComposer          = "Original Music Composer"
+	JobCinematographer   = "Director of Photography"
+	JobEditor            = "Editor"
+	JobProductionDesign  = "Production Design"
+	JobSetDesigner       = "Set Designer"
+	JobCostumeDesign     = "Costume Design"
+	JobCasting           = "Casting"
+)
+
 type Credits struct {
 	Cast []CastMember `json:"cast"`
 	Crew []CrewMember `json:"crew"`
 }
 
 type CastMember struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Character   string `json:"character"`
-	ProfilePath string `json:"profile_path"`
-	Order       int    `json:"order"`
+	ID                 int     `json:"id"`
+	Name               string  `json:"name"`
+	Character          string  `json:"character"`
+	ProfilePath        string  `json:"profile_path"`
+	KnownForDepartment string  `json:"known_for_department"`
+	Popularity         float64 `json:"popularity"`
+	Order              int     `json:"order"`
 }
 
 type CrewMember struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	Job         string `json:"job"`
-	Department  string `json:"department"`
-	ProfilePath string `json:"profile_path"`
+	ID                 int     `json:"id"`
+	Name               string  `json:"name"`
+	Job                string  `json:"job"`
+	Department         string  `json:"department"`
+	ProfilePath        string  `json:"profile_path"`
+	KnownForDepartment string  `json:"known_for_department"`
+	Popularity         float64 `json:"popularity"`
 }
 
 type AggregateCredits struct {
@@ -27,12 +48,14 @@ type AggregateCredits struct {
 }
 
 type AggregateCastMember struct {
-	ID                int    `json:"id"`
-	Name              string `json:"name"`
-	ProfilePath       string `json:"profile_path"`
-	Roles             []Role `json:"roles"`
-	Order             int    `json:"order"`
-	TotalEpisodeCount int    `json:"total_episode_count"`
+	ID                 int     `json:"id"`
+	Name               string  `json:"name"`
+	ProfilePath        string  `json:"profile_path"`
+	KnownForDepartment string  `json:"known_for_department"`
+	Popularity         float64 `json:"popularity"`
+	Roles              []Role  `json:"roles"`
+	Order              int     `json:"order"`
+	TotalEpisodeCount  int     `json:"total_episode_count"`
 }
 
 type Role struct {
@@ -42,11 +65,13 @@ type Role struct {
 }
 
 type AggregateCrewMember struct {
-	ID          int    `json:"id"`
-	Name        string `json:"name"`
-	ProfilePath string `json:"profile_path"`
-	Department  string `json:"department"`
-	Jobs        []Job  `json:"jobs"`
+	ID                 int     `json:"id"`
+	Name               string  `json:"name"`
+	ProfilePath        string  `json:"profile_path"`
+	Department         string  `json:"department"`
+	KnownForDepartment string  `json:"known_for_department"`
+	Popularity         float64 `json:"popularity"`
+	Jobs               []Job   `json:"jobs"`
 }
 
 type Job struct {

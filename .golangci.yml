@@ -1,0 +1,8 @@
+version: "2"
+
+linters:
+  exclusions:
+    presets:
+      # golangci-lint v1's defaults: an unchecked Close on a read-only body or file, or an unchecked
+      # fmt.Fprint to a terminal, is not an error handling gap worth a line each.
+      - std-error-handling

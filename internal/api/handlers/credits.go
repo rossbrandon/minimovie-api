@@ -49,23 +49,23 @@ type crewBuilder struct {
 
 func (cb *crewBuilder) add(person Person, job string) {
 	switch job {
-	case "Director":
+	case tmdb.JobDirector:
 		cb.Directors = append(cb.Directors, person)
-	case "Screenplay", "Writer", "Story":
+	case tmdb.JobScreenplay, tmdb.JobWriter, tmdb.JobStory:
 		cb.Writers = append(cb.Writers, person)
-	case "Producer", "Executive Producer":
+	case tmdb.JobProducer, tmdb.JobExecutiveProducer:
 		cb.Producers = append(cb.Producers, person)
-	case "Original Music Composer":
+	case tmdb.JobComposer:
 		cb.Composers = append(cb.Composers, person)
-	case "Director of Photography":
+	case tmdb.JobCinematographer:
 		cb.Cinematographers = append(cb.Cinematographers, person)
-	case "Editor":
+	case tmdb.JobEditor:
 		cb.Editors = append(cb.Editors, person)
-	case "Production Design", "Set Designer":
+	case tmdb.JobProductionDesign, tmdb.JobSetDesigner:
 		cb.ProductionDesign = append(cb.ProductionDesign, person)
-	case "Costume Design":
+	case tmdb.JobCostumeDesign:
 		cb.CostumeDesign = append(cb.CostumeDesign, person)
-	case "Casting":
+	case tmdb.JobCasting:
 		cb.Casting = append(cb.Casting, person)
 	}
 }

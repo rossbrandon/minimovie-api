@@ -22,6 +22,7 @@ type Movie struct {
 	Budget              int                  `json:"budget"`
 	Revenue             int                  `json:"revenue"`
 	VoteAverage         float64              `json:"vote_average"`
+	Popularity          float64              `json:"popularity"`
 	OriginalTitle       string               `json:"original_title"`
 	OriginalLanguage    string               `json:"original_language"`
 	OriginCountry       []string             `json:"origin_country"`
@@ -40,7 +41,7 @@ type BelongsToCollection struct {
 }
 
 func (c *Client) GetMovie(ctx context.Context, id int) (*Movie, error) {
-	log.Info().Int("id", id).Msg("Getting movie from TMDB")
+	log.Debug().Int("id", id).Msg("Getting movie from TMDB")
 	extras := "watch/providers,credits"
 	path := fmt.Sprintf("/movie/%d?append_to_response=%s", id, extras)
 

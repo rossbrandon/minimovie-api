@@ -17,6 +17,7 @@ type Config struct {
 	TmdbBaseUrl            string
 	TmdbTimeout            int
 	TmdbAccessToken        string
+	TmdbRateLimit          float64
 	MiniMovieUiSecret      string
 	DatabaseURL            string
 	MaxTmdbFetchPerRequest int
@@ -52,6 +53,7 @@ const defaultTimeout int = 10
 const defaultLogLevel = "info"
 const defaultTmdbBaseUrl = "https://api.themoviedb.org/3"
 const defaultTmdbTimeout int = 10
+const defaultTmdbRateLimit float64 = 20
 const defaultMaxTmdbFetchPerRequest int = 10
 const defaultDbMaxConns int = 20
 const defaultDbMinConns int = 5
@@ -109,6 +111,16 @@ func Load() (*Config, error) {
 			return nil, errors.New("TMDB_TIMEOUT is not a valid integer")
 		}
 		tmdbTimeout = tmdbTimeoutInt
+	}
+
+	tmdbRateLimitStr := os.Getenv("TMDB_RATE_LIMIT")
+	tmdbRateLimit := defaultTmdbRateLimit
+	if tmdbRateLimitStr != "" {
+		tmdbRateLimitFloat, err := strconv.ParseFloat(tmdbRateLimitStr, 64)
+		if err != nil || tmdbRateLimitFloat <= 0 {
+			return nil, errors.New("TMDB_RATE_LIMIT is not a positive number")
+		}
+		tmdbRateLimit = tmdbRateLimitFloat
 	}
 
 	miniMovieUiSecret := os.Getenv("MINI_MOVIE_UI_SECRET")
@@ -285,6 +297,7 @@ func Load() (*Config, error) {
 		TmdbBaseUrl:            tmdbBaseUrl,
 		TmdbTimeout:            tmdbTimeout,
 		TmdbAccessToken:        tmdbAccessToken,
+		TmdbRateLimit:          tmdbRateLimit,
 		MiniMovieUiSecret:      miniMovieUiSecret,
 		DatabaseURL:            databaseURL,
 		MaxTmdbFetchPerRequest: maxTmdbFetchPerRequest,

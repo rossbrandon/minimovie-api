@@ -62,6 +62,10 @@ func (f *fakeTmdbClient) GetPerson(_ context.Context, _ int) (*tmdb.Person, erro
 func (f *fakeTmdbClient) GetCollection(_ context.Context, _ int) (*tmdb.Collection, error) {
 	return f.collection, nil
 }
+func (f *fakeTmdbClient) GetChanges(_ context.Context, _ tmdb.MediaType, _, _ string) ([]int, error) {
+	return nil, nil
+}
+
 func (f *fakeTmdbClient) SearchMulti(_ context.Context, _ string, _ int) (*tmdb.SearchResults, error) {
 	return f.searchResults, f.searchErr
 }

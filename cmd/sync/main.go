@@ -61,6 +61,7 @@ func main() {
 		BaseURL:     cfg.TmdbBaseUrl,
 		Timeout:     cfg.TmdbTimeout,
 		AccessToken: cfg.TmdbAccessToken,
+		RateLimit:   cfg.TmdbRateLimit,
 	})
 
 	result, err := syncPersonChanges(ctx, tmdbClient, personStore, startDate, endDate)

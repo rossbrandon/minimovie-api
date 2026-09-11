@@ -86,7 +86,7 @@ func (s *SyncJobStore) FailJob(ctx context.Context, jobID int, errMessage string
 
 func (s *SyncJobStore) GetLastSuccessfulJob(ctx context.Context, jobType string) (*SyncJob, error) {
 	query := `
-		select id, type, start_date, end_date, status, started_at, finished_at
+		select id, type, start_date::text, end_date::text, status, started_at, finished_at
 		from sync_job_status
 		where type = $1 and status = 'completed'
 		order by finished_at desc

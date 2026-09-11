@@ -22,15 +22,17 @@ type SeasonDetails struct {
 }
 
 type Episode struct {
-	ID            int     `json:"id"`
-	Name          string  `json:"name"`
-	Overview      string  `json:"overview"`
-	EpisodeNumber int     `json:"episode_number"`
-	SeasonNumber  int     `json:"season_number"`
-	AirDate       string  `json:"air_date"`
-	Runtime       int     `json:"runtime"`
-	StillPath     string  `json:"still_path"`
-	VoteAverage   float64 `json:"vote_average"`
+	ID            int          `json:"id"`
+	Name          string       `json:"name"`
+	Overview      string       `json:"overview"`
+	EpisodeNumber int          `json:"episode_number"`
+	SeasonNumber  int          `json:"season_number"`
+	AirDate       string       `json:"air_date"`
+	Runtime       int          `json:"runtime"`
+	StillPath     string       `json:"still_path"`
+	VoteAverage   float64      `json:"vote_average"`
+	Crew          []CrewMember `json:"crew"`
+	GuestStars    []CastMember `json:"guest_stars"`
 }
 
 func (c *Client) GetSeasonAggregateCredits(ctx context.Context, seriesID, seasonNumber int) (*AggregateCredits, error) {
@@ -50,7 +52,7 @@ func (c *Client) GetSeasonAggregateCredits(ctx context.Context, seriesID, season
 }
 
 func (c *Client) GetSeason(ctx context.Context, seriesID, seasonNumber int) (*SeasonDetails, error) {
-	log.Info().Int("series_id", seriesID).Int("season", seasonNumber).Msg("Getting season from TMDB")
+	log.Debug().Int("series_id", seriesID).Int("season", seasonNumber).Msg("Getting season from TMDB")
 	extras := "watch/providers,aggregate_credits"
 	path := fmt.Sprintf("/tv/%d/season/%d?append_to_response=%s", seriesID, seasonNumber, extras)
 
