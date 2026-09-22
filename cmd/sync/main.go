@@ -6,19 +6,22 @@ import (
 	"os"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rossbrandon/minimovie-api/config"
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
-const jobType = "person_sync"
+var entities = []catalog.Entity{catalog.EntityMovie, catalog.EntitySeries, catalog.EntityPerson}
 
-type SyncResult struct {
-	TmdbChangeCount int
-	ChangedIDs      []int
-	UpdatedCount    int64
+type job struct {
+	svc       *catalog.Service
+	jobs      *store.SyncJobStore
+	purgeable []store.Purgeable
+	failed    bool
 }
 
 func main() {
@@ -42,48 +45,161 @@ func main() {
 	}
 	defer pool.Close()
 
-	personStore := store.NewPersonStore(pool)
-	syncJobStore := store.NewSyncJobStore(pool)
-
-	startDate, endDate := resolveDates(ctx, syncJobStore, overrideStart, overrideEnd)
-
-	log.Info().
-		Str("start_date", startDate).
-		Str("end_date", endDate).
-		Msg("Starting person sync job")
-
-	job, err := syncJobStore.StartJob(ctx, jobType, startDate, endDate)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to start sync job")
+	j := newJob(pool, cfg)
+	for _, entity := range entities {
+		j.syncChanges(ctx, entity, overrideStart, overrideEnd)
 	}
+	j.refresh(ctx)
+	j.hydrateNew(ctx, cfg.SyncHydrateBudget)
+	j.purge(ctx)
+	j.logStats(ctx)
 
-	tmdbClient := tmdb.NewClient(tmdb.Config{
-		BaseURL:     cfg.TmdbBaseUrl,
-		Timeout:     cfg.TmdbTimeout,
-		AccessToken: cfg.TmdbAccessToken,
-		RateLimit:   cfg.TmdbRateLimit,
-	})
-
-	result, err := syncPersonChanges(ctx, tmdbClient, personStore, startDate, endDate)
-	if err != nil {
-		if failErr := syncJobStore.FailJob(ctx, job.ID, err.Error()); failErr != nil {
-			log.Error().Err(failErr).Msg("Failed to record job failure")
-		}
-		log.Fatal().Err(err).Msg("Sync job failed")
+	if j.failed {
+		log.Error().Msg("Sync job completed with errors")
+		pool.Close()
+		os.Exit(1)
 	}
-
-	err = syncJobStore.CompleteJob(
-		ctx,
-		job.ID,
-		result.TmdbChangeCount,
-		result.ChangedIDs,
-		result.UpdatedCount,
-	)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to record job completion")
-	}
-
 	log.Info().Msg("Sync job completed successfully")
+}
+
+func newJob(pool *pgxpool.Pool, cfg *config.Config) *job {
+	movies := store.NewMovieStore(pool)
+	series := store.NewSeriesStore(pool)
+	seasons := store.NewSeasonStore(pool)
+	episodes := store.NewEpisodeStore(pool)
+	people := store.NewPersonStore(pool)
+	collections := store.NewCollectionStore(pool)
+	svc := catalog.New(catalog.Deps{
+		Pool:        pool,
+		Movies:      movies,
+		Series:      series,
+		Seasons:     seasons,
+		Episodes:    episodes,
+		People:      people,
+		Collections: collections,
+		TMDB: tmdb.NewClient(tmdb.Config{
+			BaseURL:     cfg.TmdbBaseUrl,
+			Timeout:     cfg.TmdbTimeout,
+			AccessToken: cfg.TmdbAccessToken,
+			RateLimit:   cfg.TmdbRateLimit,
+		}),
+	})
+	return &job{
+		svc:  svc,
+		jobs: store.NewSyncJobStore(pool),
+		purgeable: []store.Purgeable{
+			movies, series, seasons, episodes, collections, people,
+			store.NewSessionStore(pool),
+			store.NewAuthCodeStore(pool, nil),
+			store.NewNotificationSeenStore(pool),
+		},
+	}
+}
+
+// syncChanges runs one entity's changes window as a sync job, so a finished run becomes the next
+// run's starting point and a failed one is retried from the same place.
+func (j *job) syncChanges(ctx context.Context, entity catalog.Entity, start, end string) {
+	var err error
+	if start == "" {
+		if start, end, err = j.svc.ChangeWindow(ctx, j.jobs, entity); err != nil {
+			j.fail(err, entity, "could not resolve the changes window")
+			return
+		}
+	}
+	run, err := j.jobs.StartJob(ctx, entity.SyncJobType(), start, end)
+	if err != nil {
+		j.fail(err, entity, "could not start the sync job")
+		return
+	}
+	changed, marked, err := j.svc.SyncChanges(ctx, entity, start, end)
+	if err != nil {
+		if failErr := j.jobs.FailJob(ctx, run.ID, err.Error()); failErr != nil {
+			log.Error().Err(failErr).Msg("could not record the failed sync job")
+		}
+		j.fail(err, entity, "changes sync failed")
+		return
+	}
+	if err := j.jobs.CompleteJob(ctx, run.ID, changed, nil, marked); err != nil {
+		j.fail(err, entity, "could not record the completed sync job")
+		return
+	}
+	log.Info().Str("entity", entity.String()).Str("start", start).Str("end", end).
+		Int("changed", changed).Int64("flagged", marked).Msg("changes flagged")
+}
+
+// refresh refetches every row the changes feed flagged and every row nearing the six-month cap.
+func (j *job) refresh(ctx context.Context) {
+	for _, entity := range entities {
+		j.hydrate(ctx, catalog.HydrateOptions{
+			Entity:  entity,
+			Classes: []store.WorkClass{store.WorkStale, store.WorkExpiring},
+		})
+	}
+}
+
+// hydrateNew spends the budget on the most popular skeletons, table by table.
+func (j *job) hydrateNew(ctx context.Context, budget int) {
+	remaining := budget
+	for _, entity := range entities {
+		if remaining <= 0 {
+			return
+		}
+		stats := j.hydrate(ctx, catalog.HydrateOptions{
+			Entity:        entity,
+			Budget:        remaining,
+			Classes:       []store.WorkClass{store.WorkUnhydrated},
+			MinPopularity: store.MinHydratePopularity,
+		})
+		remaining -= stats.Attempted
+	}
+}
+
+// hydrate runs one hydration and logs its summary; a run that trips the failure streak is an error
+// for the job but does not stop the steps after it.
+func (j *job) hydrate(ctx context.Context, opts catalog.HydrateOptions) catalog.HydrateStats {
+	opts.OnRow = func(r catalog.RowResult) {
+		if r.Outcome == catalog.OutcomeFailed {
+			log.Warn().Err(r.Err).Str("entity", opts.Entity.String()).Int("source_id", r.SourceID).Msg("row failed")
+		}
+	}
+	stats, err := j.svc.Hydrate(ctx, opts)
+	if err != nil {
+		j.fail(err, opts.Entity, "hydration stopped")
+	}
+	log.Info().Str("entity", opts.Entity.String()).Int("attempted", stats.Attempted).Int("ok", stats.OK).
+		Int("gone", stats.Gone).Int("failed", stats.Failed).Int("people_fetched", stats.PeopleFetched).
+		Msg("hydration finished")
+	return stats
+}
+
+func (j *job) purge(ctx context.Context) {
+	for _, table := range j.purgeable {
+		count, err := table.DeleteExpired(ctx)
+		if err != nil {
+			log.Error().Err(err).Str("table", table.TableName()).Msg("purge failed")
+			j.failed = true
+			continue
+		}
+		log.Info().Str("table", table.TableName()).Int64("rows_purged", count).Msg("purged expired rows")
+	}
+}
+
+func (j *job) logStats(ctx context.Context) {
+	all, err := j.svc.Stats(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("stats failed")
+		j.failed = true
+		return
+	}
+	for _, st := range all {
+		log.Info().Str("table", st.Table).Int("rows", st.Rows).Int("hydrated", st.Hydrated).
+			Int("stale", st.Stale).Int("expiring", st.Expiring).Int("oldest_days", st.OldestDays).Msg("table stats")
+	}
+}
+
+func (j *job) fail(err error, entity catalog.Entity, msg string) {
+	log.Error().Err(err).Str("entity", entity.String()).Msg(msg)
+	j.failed = true
 }
 
 func parseDateFlags() (startDate, endDate string) {
@@ -91,6 +207,9 @@ func parseDateFlags() (startDate, endDate string) {
 	flag.StringVar(&endDate, "end", os.Getenv("SYNC_END_DATE"), "End date override (YYYY-MM-DD)")
 	flag.Parse()
 
+	if (startDate == "") != (endDate == "") {
+		log.Fatal().Msg("-start and -end go together")
+	}
 	if startDate != "" {
 		if _, err := time.Parse(time.DateOnly, startDate); err != nil {
 			log.Fatal().Str("start", startDate).Msg("Invalid start date format, expected YYYY-MM-DD")
@@ -109,64 +228,6 @@ func parseDateFlags() (startDate, endDate string) {
 	}
 
 	return startDate, endDate
-}
-
-func resolveDates(ctx context.Context, syncJobStore *store.SyncJobStore, overrideStart, overrideEnd string) (startDate, endDate string) {
-	if overrideStart != "" && overrideEnd != "" {
-		return overrideStart, overrideEnd
-	}
-
-	endDate = time.Now().UTC().Format(time.DateOnly)
-
-	lastJob, err := syncJobStore.GetLastSuccessfulJob(ctx, jobType)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to get last successful job, using default start date")
-		startDate = time.Now().UTC().AddDate(0, 0, -1).Format(time.DateOnly)
-		return startDate, endDate
-	}
-
-	if lastJob != nil {
-		startDate = lastJob.EndDate
-	} else {
-		startDate = time.Now().UTC().AddDate(0, 0, -1).Format(time.DateOnly)
-	}
-
-	return startDate, endDate
-}
-
-func syncPersonChanges(
-	ctx context.Context,
-	tmdbClient *tmdb.Client,
-	personStore *store.PersonStore,
-	startDate, endDate string,
-) (*SyncResult, error) {
-	changedIDs, err := tmdbClient.GetPersonChanges(ctx, startDate, endDate)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(changedIDs) == 0 {
-		log.Info().Msg("No person changes found")
-		return &SyncResult{}, nil
-	}
-
-	affected, err := personStore.MarkPeopleStale(ctx, changedIDs)
-	if err != nil {
-		return nil, err
-	}
-
-	log.Info().
-		Int("change_count", len(changedIDs)).
-		Int64("marked_stale_count", affected).
-		Str("start_date", startDate).
-		Str("end_date", endDate).
-		Msg("Person changes synced")
-
-	return &SyncResult{
-		TmdbChangeCount: len(changedIDs),
-		ChangedIDs:      changedIDs,
-		UpdatedCount:    affected,
-	}, nil
 }
 
 func init() {

@@ -21,6 +21,7 @@ type Config struct {
 	MiniMovieUiSecret      string
 	DatabaseURL            string
 	MaxTmdbFetchPerRequest int
+	SyncHydrateBudget      int
 	DbMaxConns             int
 	DbMinConns             int
 	OTelEnabled            bool
@@ -55,6 +56,7 @@ const defaultTmdbBaseUrl = "https://api.themoviedb.org/3"
 const defaultTmdbTimeout int = 10
 const defaultTmdbRateLimit float64 = 20
 const defaultMaxTmdbFetchPerRequest int = 10
+const defaultSyncHydrateBudget int = 2000
 const defaultDbMaxConns int = 20
 const defaultDbMinConns int = 5
 const defaultCacheMaxAge int = 3600
@@ -138,6 +140,16 @@ func Load() (*Config, error) {
 			return nil, errors.New("MAX_TMDB_FETCH_PER_REQUEST is not a valid integer")
 		}
 		maxTmdbFetchPerRequest = maxTmdbFetchPerRequestInt
+	}
+
+	syncHydrateBudgetStr := os.Getenv("SYNC_HYDRATE_BUDGET")
+	syncHydrateBudget := defaultSyncHydrateBudget
+	if syncHydrateBudgetStr != "" {
+		syncHydrateBudgetInt, err := strconv.Atoi(syncHydrateBudgetStr)
+		if err != nil {
+			return nil, errors.New("SYNC_HYDRATE_BUDGET is not a valid integer")
+		}
+		syncHydrateBudget = syncHydrateBudgetInt
 	}
 
 	dbMaxConnsStr := os.Getenv("DB_MAX_CONNS")
@@ -301,6 +313,7 @@ func Load() (*Config, error) {
 		MiniMovieUiSecret:      miniMovieUiSecret,
 		DatabaseURL:            databaseURL,
 		MaxTmdbFetchPerRequest: maxTmdbFetchPerRequest,
+		SyncHydrateBudget:      syncHydrateBudget,
 		DbMaxConns:             dbMaxConns,
 		DbMinConns:             dbMinConns,
 		OTelEnabled:            otelEnabled,

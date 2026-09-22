@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"time"
 
@@ -85,9 +84,11 @@ func updateEntity(ctx context.Context, o updateOptions, entity catalog.Entity) e
 	defer s.close()
 
 	jobs := store.NewSyncJobStore(s.pool)
-	start, end, err := changeWindow(ctx, s.catalog, jobs, entity, o)
-	if err != nil {
-		return err
+	start, end := o.start, o.end
+	if start == "" {
+		if start, end, err = s.catalog.ChangeWindow(ctx, jobs, entity); err != nil {
+			return err
+		}
 	}
 	job, err := jobs.StartJob(ctx, entity.SyncJobType(), start, end)
 	if err != nil {
@@ -118,48 +119,6 @@ func updateEntity(ctx context.Context, o updateOptions, entity catalog.Entity) e
 		Str("elapsed", time.Since(progress.start).Round(time.Second).String()).Msg("update ended")
 	printTableCounts(context.WithoutCancel(ctx), s.catalog, o.out)
 	return nil
-}
-
-// changeWindow is the date range to ask the feed for. Consecutive runs overlap by a day.
-func changeWindow(
-	ctx context.Context,
-	svc *catalog.Service,
-	jobs *store.SyncJobStore,
-	entity catalog.Entity,
-	o updateOptions,
-) (start, end string, err error) {
-	if o.start != "" {
-		return o.start, o.end, nil
-	}
-	today := time.Now().UTC()
-	end = today.Format(time.DateOnly)
-	last, err := jobs.GetLastSuccessfulJob(ctx, entity.SyncJobType())
-	if err != nil {
-		return "", "", err
-	}
-	if last != nil {
-		// An explicit --end in the future leaves a watermark past today.
-		return min(last.EndDate, end), end, nil
-	}
-	stats, err := entityStats(ctx, svc, entity)
-	if err != nil {
-		return "", "", err
-	}
-	// OldestDays is a whole-day floor: reach back one more day.
-	return today.AddDate(0, 0, -(stats.OldestDays + 1)).Format(time.DateOnly), end, nil
-}
-
-func entityStats(ctx context.Context, svc *catalog.Service, entity catalog.Entity) (store.CatalogStats, error) {
-	all, err := svc.Stats(ctx)
-	if err != nil {
-		return store.CatalogStats{}, err
-	}
-	for _, st := range all {
-		if st.Table == entity.String() {
-			return st, nil
-		}
-	}
-	return store.CatalogStats{}, fmt.Errorf("no stats for %s", entity)
 }
 
 // failUpdate records the failure on the job.

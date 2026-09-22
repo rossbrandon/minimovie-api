@@ -59,7 +59,7 @@ func TestMain(m *testing.M) {
 
 func truncateAll(t *testing.T) {
 	t.Helper()
-	for _, table := range []string{"movies", "series", "seasons", "episodes", "collections", "people"} {
+	for _, table := range []string{"movies", "series", "seasons", "episodes", "collections", "people", "sync_job_status"} {
 		_, err := testPool.Exec(context.Background(), "delete from "+table)
 		require.NoError(t, err)
 	}

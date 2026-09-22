@@ -53,11 +53,6 @@ func (c *Client) GetChanges(ctx context.Context, mediaType MediaType, startDate,
 	return ids, nil
 }
 
-// GetPersonChanges is the pre-2a spelling still used by cmd/sync.
-func (c *Client) GetPersonChanges(ctx context.Context, startDate, endDate string) ([]int, error) {
-	return c.GetChanges(ctx, MediaTypePerson, startDate, endDate)
-}
-
 func (c *Client) changesBetween(ctx context.Context, mediaType MediaType, from, to string) ([]int, error) {
 	var ids []int
 	for page := 1; ; page++ {

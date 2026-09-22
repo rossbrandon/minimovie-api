@@ -205,10 +205,6 @@ func (s *PersonStore) SetInsights(ctx context.Context, id int, data json.RawMess
 	return nil
 }
 
-func (s *PersonStore) MarkPeopleStale(ctx context.Context, sourceIDs []int) (int64, error) {
-	return s.MarkStale(ctx, sourceIDs)
-}
-
 func (s *PersonStore) getOne(ctx context.Context, where string, arg any) (*Person, error) {
 	defer metrics.TrackDbDuration(ctx, "read")()
 
