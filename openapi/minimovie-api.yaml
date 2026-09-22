@@ -1,7 +1,15 @@
 openapi: 3.0.3
 info:
   title: MiniMovie API
-  description: API for retrieving intuitive movie, TV series, and person information
+  description: |
+    API for retrieving intuitive movie, TV series, and person information.
+
+    Every id the API accepts or returns for movies, series, seasons, episodes, people, and
+    collections is a catalog id of its own, not the provider's. Path ids may be given as the bare
+    id or as the slug the responses carry (`155-the-dark-knight`); the leading number resolves it.
+    A nested entry whose catalog row does not exist yet (a credited person, a filmography title, a
+    collection part, a search result) is omitted from the response and appears on the next read.
+    Network ids are the provider's.
   version: 1.0.0
 
 servers:
@@ -93,9 +101,9 @@ paths:
         - name: id
           in: path
           required: true
-          description: TMDB movie ID
+          description: Catalog movie id, optionally followed by -slug (155-the-dark-knight)
           schema:
-            type: integer
+            type: string
       responses:
         "200":
           description: Movie details
@@ -137,9 +145,9 @@ paths:
         - name: id
           in: path
           required: true
-          description: TMDB series ID
+          description: Catalog series id, optionally followed by -slug
           schema:
-            type: integer
+            type: string
       responses:
         "200":
           description: Series details
@@ -181,9 +189,9 @@ paths:
         - name: seriesId
           in: path
           required: true
-          description: TMDB series ID
+          description: Catalog series id, optionally followed by -slug
           schema:
-            type: integer
+            type: string
         - name: seasonNumber
           in: path
           required: true
@@ -231,9 +239,9 @@ paths:
         - name: seriesId
           in: path
           required: true
-          description: TMDB series ID
+          description: Catalog series id, optionally followed by -slug
           schema:
-            type: integer
+            type: string
         - name: seasonNumber
           in: path
           required: true
@@ -287,9 +295,9 @@ paths:
         - name: id
           in: path
           required: true
-          description: TMDB person ID
+          description: Catalog person id, optionally followed by -slug
           schema:
-            type: integer
+            type: string
       responses:
         "200":
           description: Person details
@@ -331,15 +339,15 @@ paths:
         - name: seriesId
           in: path
           required: true
-          description: TMDB series ID
+          description: Catalog series id, optionally followed by -slug
           schema:
-            type: integer
+            type: string
         - name: personId
           in: path
           required: true
-          description: TMDB person ID
+          description: Catalog person id, optionally followed by -slug
           schema:
-            type: integer
+            type: string
       responses:
         "200":
           description: Person's series credits
@@ -900,7 +908,7 @@ paths:
         - name: seriesId
           in: path
           required: true
-          description: TMDB series ID
+          description: Catalog series id
           schema:
             type: integer
       responses:
@@ -1278,7 +1286,7 @@ paths:
         - name: id
           in: path
           required: true
-          description: TMDB person ID
+          description: Catalog person id
           schema:
             type: integer
         - name: name
@@ -1388,6 +1396,9 @@ components:
       properties:
         id:
           type: integer
+        slug:
+          type: string
+          description: Route form of the id (155-the-dark-knight); absent on collection parts
         imdbID:
           type: string
         title:
@@ -1481,6 +1492,9 @@ components:
       properties:
         id:
           type: integer
+        slug:
+          type: string
+          description: Route form of the id
         name:
           type: string
         tagline:
@@ -1637,6 +1651,9 @@ components:
       properties:
         id:
           type: integer
+        slug:
+          type: string
+          description: Route form of the id
         imdbId:
           type: string
         name:

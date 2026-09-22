@@ -28,6 +28,11 @@ All public catalog routes require the guest key header.
 Authorization: Bearer <guest-key>
 ```
 
+Ids are the catalog's own, not TMDB's, and every path id also accepts the slug form the responses
+carry (`550-fight-club`); the leading number resolves it. A nested entry without a catalog row yet
+(a credited person, a filmography title, a collection part, a search result) is left out of the
+response and appears on the next read.
+
 ### Search (multi)
 
 ```http
@@ -70,9 +75,14 @@ Valid `type` values: `movie`, `series`, `person`, `all` (or omit for multi-searc
 GET http://localhost:8080/movies/550
 ```
 
+```http
+GET http://localhost:8080/movies/550-fight-club
+```
+
 ```json
 {
   "id": 550,
+  "slug": "550-fight-club",
   "imdbID": "tt0137523",
   "title": "Fight Club",
   "tagline": "Mischief. Mayhem. Soap.",
@@ -96,9 +106,14 @@ GET http://localhost:8080/movies/550
 GET http://localhost:8080/series/1396
 ```
 
+```http
+GET http://localhost:8080/series/1396-breaking-bad
+```
+
 ```json
 {
   "id": 1396,
+  "slug": "1396-breaking-bad",
   "name": "Breaking Bad",
   "tagline": "All Hail the King",
   "overview": "Walter White, a New Mexico chemistry teacher...",
@@ -127,6 +142,10 @@ GET http://localhost:8080/series/1396
 GET http://localhost:8080/series/1396/seasons/1
 ```
 
+```http
+GET http://localhost:8080/series/1396-breaking-bad/seasons/1
+```
+
 ```json
 {
   "id": 3572,
@@ -153,6 +172,10 @@ GET http://localhost:8080/series/1396/seasons/1
 GET http://localhost:8080/series/1396/seasons/1/episodes/1
 ```
 
+```http
+GET http://localhost:8080/series/1396-breaking-bad/seasons/1/episodes/1
+```
+
 ```json
 {
   "id": 62085,
@@ -172,9 +195,14 @@ GET http://localhost:8080/series/1396/seasons/1/episodes/1
 GET http://localhost:8080/people/17419
 ```
 
+```http
+GET http://localhost:8080/people/17419-bryan-cranston
+```
+
 ```json
 {
   "id": 17419,
+  "slug": "17419-bryan-cranston",
   "imdbId": "nm0186505",
   "name": "Bryan Cranston",
   "biography": "Bryan Lee Cranston is an American actor...",
@@ -193,6 +221,10 @@ GET http://localhost:8080/people/17419
 
 ```http
 GET http://localhost:8080/series/1396/person/17419/credits
+```
+
+```http
+GET http://localhost:8080/series/1396-breaking-bad/person/17419-bryan-cranston/credits
 ```
 
 ```json

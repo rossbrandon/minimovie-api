@@ -44,8 +44,6 @@ minimovie-api/
 ├── cmd/
 │   ├── api/
 │   │   └── main.go                 # API server entry point
-│   ├── cleanup/
-│   │   └── main.go                 # Expired record purge job (cron)
 │   ├── seed/
 │   │   ├── main.go                 # Catalog seed CLI (local only): download, save, hydrate, update, status
 │   │   ├── root.go                 # Cobra root, --entity flag, exit codes, signal handling
@@ -59,7 +57,7 @@ minimovie-api/
 │   │   ├── progress.go             # Per-row and per-batch callbacks: counters and the status line
 │   │   └── term.go                 # In-place status line above the log output
 │   └── sync/
-│       └── main.go                 # Person sync job (cron)
+│       └── main.go                 # Daily catalog job (cron): changes, refresh, hydrate, purge, stats
 │
 ├── config/
 │   └── config.go                   # Config definitions and loader
@@ -72,14 +70,19 @@ minimovie-api/
 │   │   └── worker.go               # Background achievement worker
 │   │
 │   ├── age/
-│   │   ├── age.go                  # Age calculation utilities
-│   │   └── resolver.go             # Person age resolver (cache → DB → API)
+│   │   └── age.go                  # Age calculation utilities
+│   │
+│   ├── background/
+│   │   └── group.go                # Detached tasks with their own timeout; waited for at shutdown
 │   │
 │   ├── catalog/
-│   │   ├── catalog.go              # Service, Entity, Deps: the one write path for TMDB data
-│   │   ├── changes.go              # SyncChanges: changes feed to stale flags
-│   │   ├── fetch.go                # getX/fetchX: network half, then writes (row in the transaction, shared rows outside)
-│   │   ├── people.go               # Credited people: list-grade seeding and the capped priority fetch
+│   │   ├── catalog.go              # Service, Entity, Deps: the one path to TMDB data, read and write
+│   │   ├── changes.go              # SyncChanges and ChangeWindow: changes feed to stale flags
+│   │   ├── fetch.go                # getX: network half, then writes (own row and children, then seeds)
+│   │   ├── read.go                 # The read state machine: fresh, stale (served + refreshed), miss (fetched)
+│   │   ├── service.go              # Accessors handlers read through: Movie, Series, Season, Episode, Person...
+│   │   ├── resolved.go             # ResolveX: the snapshot a watch event keeps
+│   │   ├── people.go               # Credited people: seeding, the capped priority fetch, the fetcher
 │   │   ├── payload.go              # tmdb.* to store.* row mappers (typed columns + pruned payload)
 │   │   ├── slug.go                 # ParseSlugID: the leading id of a slug
 │   │   ├── hydrate.go              # Batched, transactional hydration: concurrent batches, claim by work class
@@ -125,10 +128,7 @@ minimovie-api/
 │   │
 │   ├── store/
 │   │   ├── pool.go                 # PostgreSQL connection pool
-│   │   ├── cache.go                # Cache interface
-│   │   ├── person_cache.go         # In-memory person birthday cache
-│   │   ├── season_cast_cache.go    # In-memory season cast cache
-│   │   ├── catalog.go              # Shared catalog table ops: claim, mark stale, purge, stats
+│   │   ├── catalog.go              # Shared catalog table ops: claim, mark stale, ids by source, purge, stats
 │   │   ├── movie_store.go          # movies: hydrated and skeleton upserts, reads
 │   │   ├── series_store.go         # series
 │   │   ├── season_store.go         # seasons (skeletons from the series document)
@@ -136,10 +136,8 @@ minimovie-api/
 │   │   ├── collection_store.go     # collections
 │   │   ├── achievement_store.go    # Achievement store
 │   │   ├── auth_code_store.go      # One-time auth code store
-│   │   ├── interesting_info_store.go # LLM-enriched person info store
 │   │   ├── notification_store.go   # Apple notification dedup store
-│   │   ├── person_store.go         # PostgreSQL person store
-│   │   ├── season_cast_store.go    # Season aggregate cast store
+│   │   ├── person_store.go         # people: dates for credits, insights for augur
 │   │   ├── session_store.go        # Session store
 │   │   ├── stats_store.go          # User stats store
 │   │   ├── sync_job.go             # Sync job store operations
@@ -153,7 +151,6 @@ minimovie-api/
 │       ├── collection.go           # GetCollection()
 │       ├── credits.go              # Credits, AggregateCredits, CombinedCredits types
 │       ├── episode.go              # GetEpisode()
-│       ├── media_metadata.go       # TMDB metadata resolution for watch events
 │       ├── metadata.go             # Shared types
 │       ├── movie.go                # GetMovie()
 │       ├── person.go               # GetPerson()
@@ -229,55 +226,43 @@ OAuth 2.0 / OpenID Connect via [zitadel/oidc](https://github.com/zitadel/oidc). 
 
 ### Age Enrichment
 
-Credits for movies, series, seasons, and episodes are enriched with age data calculated from cast/crew birthdays.
+Credits for movies, series, seasons, and episodes are enriched with age data calculated from cast/crew birthdays, read from the `people` table with one query per request.
 
 #### Flow
 
 ```mermaid
 flowchart TD
     subgraph request [API Request Flow]
-        A[Movie/Series Handler] --> B[Build Credits]
-        B --> C[Enrich with Ages]
+        A[Movie/Series Handler] --> B[catalog.Movie / Series / Season / Episode]
+        B --> C[Row fresh?]
+        C -->|Yes| D[Serve the stored document]
+        C -->|Stale| E[Serve it, refresh in the background]
+        C -->|Missing or expired| F[Fetch from TMDB, write, then serve]
+        D --> G[GetDates for every credited person]
+        E --> G
+        F --> G
     end
 
-    subgraph lookup [Birthday Lookup - Priority Order]
-        C --> D{BigCache?}
-        D -->|Hit| H[Calculate Age]
-        D -->|Miss| E{Postgres?}
-        E -->|Found| F[Update BigCache]
-        F --> H
-        E -->|Not Found or fetched=false| G{Under Limit?}
-        G -->|Yes| I[Fetch from TMDB]
-        G -->|No| J[Skip - No Age]
-        I --> K[Update Postgres + BigCache]
-        K --> H
-    end
-
-    subgraph priority [Priority-Based TMDB Fetching]
-        L[Directors] --> M[Writers]
-        M --> N[Top 10 Cast]
-        N --> O[Remaining Cast]
-        O --> P[Other Crew]
+    subgraph people [People without a hydrated row]
+        G --> H{Director, writer, top 10 cast?}
+        H -->|Yes, under MAX_TMDB_FETCH_PER_REQUEST| I[Fetch now]
+        H -->|No| J[Queue for the in-process fetcher]
+        I --> K[Calculate Age]
+        J --> L[Present on the next request]
     end
 ```
 
-#### Data Flow
-
-1. **BigCache** (in-memory, 24h TTL) — fastest, checked first
-2. **Postgres** — persistent storage, checked on cache miss
-3. **TMDB API** — external source, fetched only when needed
-
 ### Person Priority System
 
-TMDB API calls are limited per request to avoid N+1 problems. When fetching is required, people are prioritized:
+Synchronous TMDB calls are capped per request to avoid N+1 problems. When a credited person has no hydrated row, the gap is filled in this order:
 
 | Priority | Role        | Notes                     |
 | -------- | ----------- | ------------------------- |
 | 1        | Directors   | Always fetched first      |
 | 2        | Writers     | Screenplay, Story, Writer |
 | 3        | Top 10 Cast | By billing order          |
-| 4        | Cast 11-25  | Lower priority            |
-| 5        | Other Crew  | Fetched last              |
+| 4        | Cast 11+    | Left to the fetcher       |
+| 5        | Other Crew  | Left to the fetcher       |
 
 #### Enrichment Output
 
@@ -286,7 +271,7 @@ TMDB API calls are limited per request to avoid N+1 problems. When fetching is r
 
 ## Catalog Seed
 
-The catalog tables (`movies`, `series`, `seasons`, `episodes`, `collections`, `people`) hold TMDB data in Postgres: an identity `id` of our own, the provider's id as `source_id`, a `slug` generated from id and title (`155-the-dark-knight`; routes resolve it by the leading id), typed columns for what is filtered, sorted, or joined on, and the pruned TMDB document as `payload`. `cmd/seed` fills them from a laptop, never from Railway (only the api, sync, and cleanup binaries deploy).
+The catalog tables (`movies`, `series`, `seasons`, `episodes`, `collections`, `people`) hold TMDB data in Postgres: an identity `id` of our own, the provider's id as `source_id`, a `slug` generated from id and title (`155-the-dark-knight`; routes resolve it by the leading id), typed columns for what is filtered, sorted, or joined on, and the pruned TMDB document as `payload`. `cmd/seed` fills them from a laptop, never from Railway (only the api and sync binaries deploy).
 
 ```sh
 make seed
@@ -301,53 +286,34 @@ People go first so titles find their credits already hydrated. `save` is an idem
 
 To move a local seed to another database, by hand: `pg_dump -Fc --no-owner --no-privileges -t movies -t series -t seasons -t episodes -t collections -t people "$DATABASE_URL" -f catalog.dump`, then against the target `psql -v step=extensions -f local-development/upgrade-catalog.sql`, `pg_restore --clean --if-exists --no-owner --no-privileges -j 4 -d "$TARGET" catalog.dump`, and `psql -v step=finish -f local-development/upgrade-catalog.sql` (carry-forward, user-row remap, drops).
 
-## Change Sync Logic
+## Daily Catalog Job
 
-In order to keep the cache up to date with TMDB (ie when a person dies), a daily job is run to allow the data to be refreshed from TMDB.
+`cmd/sync` keeps the catalog current with TMDB (a person dies, a series adds a season) and within TMDB's six-month cap. It runs once a day and does five things in order:
 
-The default behavior will be to pull the past day's changes, but these can be overridden via:
+1. **Changes**: for movies, series, and people, ask the changes feed which ids moved and flag the rows we hold as `stale`. A changed series also flags its hydrated seasons and episodes. Each entity's window is recorded as a `sync_job_status` row (`movie_sync`, `tv_sync`, `person_sync`); the next run starts where the last completed one ended, or a day before the entity's oldest hydrated row when no run exists. `SYNC_START_DATE`/`SYNC_END_DATE` or `make sync START=2026-01-01 END=2026-01-05` override the window for all three.
+2. **Refresh**: refetch every stale row and every row older than 150 days.
+3. **Hydrate**: spend `SYNC_HYDRATE_BUDGET` (default 2000) on the most popular skeleton rows, movies first.
+4. **Purge**: delete rows older than 180 days from the six catalog tables, and expired sessions, auth codes, and notification ids.
+5. **Stats**: log per-table counts; `oldest_days` is the compliance number.
 
-1. env variables: `SYNC_START_DATE` and `SYNC_END_DATE`
-2. Command flags: `make sync START=2026-01-01 END=2026-01-05`
-
-Sync Flow:
+A step that fails is logged and the run continues; the process exits 1 at the end if anything failed. Stale rows the job has not reached yet are still served: a request serves the stored document and refreshes it in the background.
 
 ```mermaid
 flowchart LR
-    subgraph sync_job [Sync Job - Daily]
-        A[cmd/sync] --> B[TMDB /person/changes API]
-        B --> C[Get person IDs]
-        C --> D[Mark fetched=false in Postgres]
+    subgraph sync_job [cmd/sync - Daily]
+        A[Changes feed per entity] --> B[stale = true on held rows]
+        B --> C[Refresh stale and expiring rows]
+        C --> D[Hydrate popular skeletons within the budget]
+        D --> E[Purge rows past 180 days]
+        E --> F[Table stats]
     end
 
     subgraph api [API - On Request]
-        E[User Request] --> F[Cache Miss after 24h TTL]
-        F --> G[DB Check: fetched=false]
-        G --> H[Re-fetch from TMDB]
-        H --> I[Update DB + Cache]
+        G[Request] --> H{Row state}
+        H -->|fresh| I[Serve]
+        H -->|stale| J[Serve, refresh in the background]
+        H -->|missing or expired| K[Fetch, write, serve]
     end
 
-    D -.-> G
-```
-
-Sync Status Tracking:
-
-```mermaid
-flowchart TD
-    A[Parse Flags] --> B{Override dates provided?}
-    B -->|Yes| D[Use provided dates]
-    B -->|No| C[Query last successful job]
-    C --> E{Found previous job?}
-    E -->|Yes| F["start = last job's end_date"]
-    E -->|No| G["start = yesterday (default)"]
-    F --> H["end = today"]
-    G --> H
-    D --> I[StartJob in DB]
-    H --> I
-    I --> J[Execute Sync]
-    J --> K{Success?}
-    K -->|Yes| L[CompleteJob]
-    K -->|No| M[FailJob]
-    L --> N[Exit 0]
-    M --> O[Exit 1]
+    B -.-> J
 ```
