@@ -1,13 +1,14 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/rossbrandon/minimovie-api/internal/age"
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
+	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog/log"
 )
@@ -77,53 +78,21 @@ func (h *Handlers) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := toSearchResponse(results)
-	h.enrichSearchResultsWithAges(r.Context(), response.Results)
-	httputil.JSON(w, http.StatusOK, response)
-}
-
-func (h *Handlers) enrichSearchResultsWithAges(ctx context.Context, results []SearchResult) {
-	if len(results) == 0 || h.ageResolver == nil {
+	refs, err := h.catalog.SeedSearch(r.Context(), results)
+	if err != nil {
+		log.Error().Err(err).Str("query", query).Msg("failed to seed search results")
+		httputil.Error(w, http.StatusInternalServerError, "Failed to search")
 		return
 	}
-
-	var people []age.PersonRef
-	for _, r := range results {
-		if r.MediaType == MediaTypePerson {
-			people = append(people, age.PersonRef{
-				ID:       r.ID,
-				Name:     r.Title,
-				Priority: age.PriorityCast,
-			})
-		}
-	}
-
-	if len(people) == 0 {
-		return
-	}
-
-	birthdays := h.ageResolver.Resolve(ctx, people)
-	nowTime := time.Now().Format(time.DateOnly)
-	for i := range results {
-		if results[i].MediaType != MediaTypePerson {
-			continue
-		}
-		dates, ok := birthdays[results[i].ID]
-		if !ok || dates.DateOfBirth == "" {
-			continue
-		}
-		if dates.DateOfDeath != "" {
-			results[i].Age = -1
-		} else {
-			results[i].Age = *age.CalculateAge(dates.DateOfBirth, nowTime)
-		}
-	}
+	httputil.JSON(w, http.StatusOK, toSearchResponse(results, refs))
 }
 
-func toSearchResponse(results *tmdb.SearchResults) *SearchResponse {
-	items := make([]SearchResult, len(results.Results))
-	for i, r := range results.Results {
-		items[i] = toSearchResult(r)
+func toSearchResponse(results *tmdb.SearchResults, refs *catalog.SearchRefs) *SearchResponse {
+	items := make([]SearchResult, 0, len(results.Results))
+	for _, r := range results.Results {
+		if item, ok := toSearchResult(r, refs); ok {
+			items = append(items, item)
+		}
 	}
 
 	return &SearchResponse{
@@ -134,29 +103,44 @@ func toSearchResponse(results *tmdb.SearchResults) *SearchResponse {
 	}
 }
 
-func toSearchResult(r tmdb.SearchResult) SearchResult {
-	result := SearchResult{
-		ID:       r.ID,
-		Overview: r.Overview,
-	}
-
+func toSearchResult(r tmdb.SearchResult, refs *catalog.SearchRefs) (SearchResult, bool) {
+	result := SearchResult{Overview: r.Overview}
+	var ok bool
 	switch r.MediaType {
 	case tmdb.MediaTypeMovie:
+		result.ID, ok = refs.Movies[r.ID]
 		result.MediaType = MediaTypeMovie
 		result.Title = r.Title
 		result.PosterPath = r.PosterPath
 		result.ReleaseDate = r.ReleaseDate
 	case tmdb.MediaTypeTV:
+		result.ID, ok = refs.Series[r.ID]
 		result.MediaType = MediaTypeSeries
 		result.Title = r.Name
 		result.PosterPath = r.PosterPath
 		result.ReleaseDate = r.FirstAirDate
 	case tmdb.MediaTypePerson:
+		var d store.PersonDates
+		d, ok = refs.People[r.ID]
+		result.ID = d.ID
+		result.Age = personAge(d)
 		result.MediaType = MediaTypePerson
 		result.Title = r.Name
 		result.PosterPath = r.ProfilePath
 		result.KnownFor = r.KnownForDepartment
 	}
+	return result, ok
+}
 
-	return result
+func personAge(d store.PersonDates) int {
+	if d.DateOfBirth == "" {
+		return 0
+	}
+	if d.DateOfDeath != "" {
+		return -1
+	}
+	if a := age.CalculateAge(d.DateOfBirth, time.Now().Format(time.DateOnly)); a != nil {
+		return *a
+	}
+	return 0
 }

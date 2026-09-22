@@ -54,12 +54,8 @@ type WatchlistItem struct {
 
 type ResolvedMedia struct {
 	Title          string
-	MediaID        *int
-	PosterPath     *string
 	Genres         []string
 	RuntimeMinutes *int
-	VoteAverage    *float32
-	ReleaseYear    *int
 	SeriesTitle    *string
 	EpisodeCount   *int
 	SeasonCount    *int

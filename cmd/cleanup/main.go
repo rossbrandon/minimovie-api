@@ -36,7 +36,6 @@ func main() {
 
 	// Register all purgeable stores — add new cache stores here as they're created
 	stores := []store.Purgeable{
-		store.NewSeasonCastPostgresStore(pool),
 		store.NewSessionStore(pool),
 		store.NewAuthCodeStore(pool, nil),
 		store.NewNotificationSeenStore(pool),

@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog/log"
@@ -37,9 +38,8 @@ type EpisodeSummary struct {
 }
 
 func (h *Handlers) GetSeason(w http.ResponseWriter, r *http.Request) {
-	seriesIDStr := chi.URLParam(r, "seriesId")
-	seriesID, err := strconv.Atoi(seriesIDStr)
-	if err != nil {
+	seriesID, ok := catalog.ParseSlugID(chi.URLParam(r, "seriesId"))
+	if !ok {
 		httputil.Error(w, http.StatusBadRequest, "Invalid series ID")
 		return
 	}
@@ -51,23 +51,36 @@ func (h *Handlers) GetSeason(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	season, err := h.tmdbClient.GetSeason(r.Context(), seriesID, seasonNum)
+	s, err := h.catalog.Season(r.Context(), seriesID, seasonNum)
 	if err != nil {
-		if errors.Is(err, tmdb.ErrNotFound) {
+		if errors.Is(err, catalog.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "Season not found")
 			return
 		}
-		log.Error().Err(err).Int("series_id", seriesID).Int("season", seasonNum).Msg("failed to fetch season")
+		log.Error().Err(err).Int("series_id", seriesID).Int("season_number", seasonNum).Msg("failed to fetch season")
 		httputil.Error(w, http.StatusInternalServerError, "Failed to fetch season")
 		return
 	}
 
-	h.seriesService.UpdateSeries(seriesID)
-
-	details := toSeasonDetails(season)
-	h.enrichCreditsWithAges(r.Context(), details.Credits, season.AirDate, season.AirDate)
+	details := toSeasonDetails(s.SeasonDetails)
+	details.ID = s.ID
+	details.Episodes = mapEpisodes(details.Episodes, s.EpisodeIDs)
+	applyPeople(details.Credits, s.People, s.AirDate, s.AirDate)
 
 	httputil.JSON(w, http.StatusOK, details)
+}
+
+func mapEpisodes(episodes []EpisodeSummary, ids catalog.IDs) []EpisodeSummary {
+	kept := episodes[:0]
+	for _, ep := range episodes {
+		id, ok := ids[ep.EpisodeNumber]
+		if !ok {
+			continue
+		}
+		ep.ID = id
+		kept = append(kept, ep)
+	}
+	return kept
 }
 
 func toSeasonDetails(season *tmdb.SeasonDetails) *SeasonDetails {

@@ -135,48 +135,6 @@ func (s *SeasonStore) Upsert(ctx context.Context, db DBTX, season Season) (int, 
 	return id, nil
 }
 
-// PersonEpisodeCounts reads one person's episode count per stored season straight from the season payloads.
-func (s *SeasonStore) PersonEpisodeCounts(ctx context.Context, seriesID, personSourceID int) (map[int]int, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
-
-	rows, err := s.pool.Query(ctx, `
-		select season_number,
-		       coalesce(jsonb_path_query_first(payload, '$.aggregate_credits.cast[*] ? (@.id == $pid).total_episode_count',
-		                                       jsonb_build_object('pid', $2::int))::int, 0)
-		from seasons where series_id = $1 and payload is not null`, seriesID, personSourceID)
-	if err != nil {
-		return nil, fmt.Errorf("season store: person episode counts: %w", err)
-	}
-	defer rows.Close()
-
-	counts := make(map[int]int)
-	for rows.Next() {
-		var season, n int
-		if err := rows.Scan(&season, &n); err != nil {
-			return nil, fmt.Errorf("season store: person episode counts: %w", err)
-		}
-		counts[season] = n
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("season store: person episode counts: %w", err)
-	}
-	return counts, nil
-}
-
-func (s *SeasonStore) RuntimeMinutes(ctx context.Context, seriesID, seasonNumber int) (int, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
-
-	var minutes int
-	err := s.pool.QueryRow(ctx, `
-		select coalesce(sum((e->>'runtime')::int), 0)
-		from seasons, jsonb_array_elements(coalesce(payload->'episodes', '[]'::jsonb)) e
-		where series_id = $1 and season_number = $2`, seriesID, seasonNumber).Scan(&minutes)
-	if err != nil {
-		return 0, fmt.Errorf("season store: runtime %d/%d: %w", seriesID, seasonNumber, err)
-	}
-	return minutes, nil
-}
-
 func (s *SeasonStore) MarkStaleBySeries(ctx context.Context, seriesIDs []int) (int64, error) {
 	if len(seriesIDs) == 0 {
 		return 0, nil

@@ -1,10 +1,11 @@
 package handlers
 
 import (
-	"context"
 	"time"
 
 	"github.com/rossbrandon/minimovie-api/internal/age"
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
+	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 )
 
@@ -151,90 +152,46 @@ func buildAggregateCredits(credits tmdb.AggregateCredits) *Credits {
 	}
 }
 
-// collectPeopleForEnrichment gathers all people from credits in priority order for birthday enrichment.
-// The sliding window in the resolver will fetch them gradually over multiple requests.
-func collectPeopleForEnrichment(credits *Credits) []age.PersonRef {
+// applyPeople maps every credited person onto the catalog and fills in their ages.
+func applyPeople(credits *Credits, people catalog.PeopleDates, startDate, endDate string) {
 	if credits == nil {
-		return nil
+		return
 	}
-
-	var refs []age.PersonRef
-
-	for _, p := range credits.Directors {
-		refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: age.PriorityDirector})
+	buckets := []*[]Person{
+		&credits.Cast, &credits.Directors, &credits.Writers, &credits.Producers, &credits.Composers,
+		&credits.Cinematographers, &credits.Editors, &credits.ProductionDesign, &credits.CostumeDesign,
+		&credits.Casting,
 	}
-
-	for _, p := range credits.Writers {
-		refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: age.PriorityWriter})
+	for _, bucket := range buckets {
+		*bucket = mapPeople(*bucket, people, startDate, endDate)
 	}
-
-	for i, p := range credits.Cast {
-		priority := age.PriorityTopCast
-		if i >= 10 {
-			priority = age.PriorityCast
-		}
-		refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: priority})
-	}
-
-	addCrew := func(people []Person) {
-		for _, p := range people {
-			refs = append(refs, age.PersonRef{ID: p.ID, Name: p.Name, Priority: age.PriorityCrew})
-		}
-	}
-	addCrew(credits.Producers)
-	addCrew(credits.Composers)
-	addCrew(credits.Cinematographers)
-	addCrew(credits.Editors)
-	addCrew(credits.ProductionDesign)
-	addCrew(credits.CostumeDesign)
-	addCrew(credits.Casting)
-
-	return refs
 }
 
-// enrichCreditsWithAges adds age data to credits using the age resolver.
-// For single-date content (movies, episodes), pass the same date for both start and end.
-// For date-range content (series), pass different dates to get age ranges.
-func (h *Handlers) enrichCreditsWithAges(ctx context.Context, credits *Credits, startDate, endDate string) {
-	if credits == nil || h.ageResolver == nil {
-		return
-	}
-
-	people := collectPeopleForEnrichment(credits)
-	if len(people) == 0 {
-		return
-	}
-
-	birthdays := h.ageResolver.Resolve(ctx, people)
-	useRange := endDate != "" && endDate != startDate
-	nowTime := time.Now().Format(time.DateOnly)
-	applyAges := func(persons []Person) {
-		for i := range persons {
-			dates, ok := birthdays[persons[i].ID]
-			if !ok || dates.DateOfBirth == "" {
-				continue
-			}
-
-			persons[i].Birthday = dates.DateOfBirth
-			persons[i].Deathday = dates.DateOfDeath
-			persons[i].CurrentAge = age.CalculateAge(dates.DateOfBirth, nowTime)
-
-			if useRange {
-				persons[i].AgeRange = age.CalculateAgeRange(dates.DateOfBirth, startDate, endDate)
-			} else {
-				persons[i].AgeAtRelease = age.CalculateAgeAtEvent(dates.DateOfBirth, dates.DateOfDeath, startDate, nowTime)
-			}
+func mapPeople(persons []Person, people catalog.PeopleDates, startDate, endDate string) []Person {
+	kept := persons[:0]
+	for _, p := range persons {
+		d, ok := people[p.ID]
+		if !ok {
+			continue
 		}
+		p.ID = d.ID
+		kept = append(kept, withAges(p, d, startDate, endDate))
 	}
+	return kept
+}
 
-	applyAges(credits.Cast)
-	applyAges(credits.Directors)
-	applyAges(credits.Writers)
-	applyAges(credits.Producers)
-	applyAges(credits.Composers)
-	applyAges(credits.Cinematographers)
-	applyAges(credits.Editors)
-	applyAges(credits.ProductionDesign)
-	applyAges(credits.CostumeDesign)
-	applyAges(credits.Casting)
+func withAges(p Person, d store.PersonDates, startDate, endDate string) Person {
+	if d.DateOfBirth == "" {
+		return p
+	}
+	today := time.Now().Format(time.DateOnly)
+	p.Birthday = d.DateOfBirth
+	p.Deathday = d.DateOfDeath
+	p.CurrentAge = age.CalculateAge(d.DateOfBirth, today)
+	if endDate != "" && endDate != startDate {
+		p.AgeRange = age.CalculateAgeRange(d.DateOfBirth, startDate, endDate)
+	} else {
+		p.AgeAtRelease = age.CalculateAgeAtEvent(d.DateOfBirth, d.DateOfDeath, startDate, today)
+	}
+	return p
 }

@@ -12,55 +12,32 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/rossbrandon/minimovie-api/config"
 	mw "github.com/rossbrandon/minimovie-api/internal/api/middleware"
+	"github.com/rossbrandon/minimovie-api/internal/background"
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/stretchr/testify/require"
 	"github.com/zitadel/oidc/v3/pkg/client/rp"
 )
 
-// --- fakeTmdbClient implements tmdb.MediaClient ---
+// --- fakeTmdbClient implements tmdb.MediaClient; only search reaches it ---
 
 type fakeTmdbClient struct {
-	movie         *tmdb.Movie
-	movieErr      error
-	series        *tmdb.Series
-	seriesErr     error
-	seriesSeasons *tmdb.SeriesWithSeasons
-	season        *tmdb.SeasonDetails
-	seasonErr     error
-	aggCredits    *tmdb.AggregateCredits
-	episode       *tmdb.EpisodeDetails
-	episodeErr    error
-	person        *tmdb.Person
-	personErr     error
-	collection    *tmdb.Collection
 	searchResults *tmdb.SearchResults
 	searchErr     error
 }
 
-func (f *fakeTmdbClient) GetMovie(_ context.Context, _ int) (*tmdb.Movie, error) {
-	return f.movie, f.movieErr
-}
-func (f *fakeTmdbClient) GetSeries(_ context.Context, _ int) (*tmdb.Series, error) {
-	return f.series, f.seriesErr
-}
-func (f *fakeTmdbClient) GetSeriesWithSeasons(_ context.Context, _ int) (*tmdb.SeriesWithSeasons, error) {
-	return f.seriesSeasons, f.seriesErr
-}
+func (f *fakeTmdbClient) GetMovie(_ context.Context, _ int) (*tmdb.Movie, error)   { return nil, nil }
+func (f *fakeTmdbClient) GetSeries(_ context.Context, _ int) (*tmdb.Series, error) { return nil, nil }
+func (f *fakeTmdbClient) GetPerson(_ context.Context, _ int) (*tmdb.Person, error) { return nil, nil }
 func (f *fakeTmdbClient) GetSeason(_ context.Context, _, _ int) (*tmdb.SeasonDetails, error) {
-	return f.season, f.seasonErr
-}
-func (f *fakeTmdbClient) GetSeasonAggregateCredits(_ context.Context, _, _ int) (*tmdb.AggregateCredits, error) {
-	return f.aggCredits, nil
+	return nil, nil
 }
 func (f *fakeTmdbClient) GetEpisode(_ context.Context, _, _, _ int) (*tmdb.EpisodeDetails, error) {
-	return f.episode, f.episodeErr
-}
-func (f *fakeTmdbClient) GetPerson(_ context.Context, _ int) (*tmdb.Person, error) {
-	return f.person, f.personErr
+	return nil, nil
 }
 func (f *fakeTmdbClient) GetCollection(_ context.Context, _ int) (*tmdb.Collection, error) {
-	return f.collection, nil
+	return nil, nil
 }
 func (f *fakeTmdbClient) GetChanges(_ context.Context, _ tmdb.MediaType, _, _ string) ([]int, error) {
 	return nil, nil
@@ -77,6 +54,91 @@ func (f *fakeTmdbClient) SearchSeries(_ context.Context, _ string, _ int) (*tmdb
 }
 func (f *fakeTmdbClient) SearchPerson(_ context.Context, _ string, _ int) (*tmdb.SearchResults, error) {
 	return f.searchResults, f.searchErr
+}
+
+// --- fakeCatalog answers with the fixtures a test sets; an unset one is not found ---
+
+type fakeCatalog struct {
+	Catalog
+	movie      *catalog.Movie
+	series     *catalog.Series
+	season     *catalog.Season
+	episode    *catalog.Episode
+	person     *catalog.Person
+	collection *catalog.Collection
+	seasons    map[int]*tmdb.SeasonDetails
+	err        error
+}
+
+func (f *fakeCatalog) Movie(_ context.Context, _ int) (*catalog.Movie, error) {
+	return fixture(f.movie, f.err)
+}
+func (f *fakeCatalog) Collection(_ context.Context, _ int) (*catalog.Collection, error) {
+	return fixture(f.collection, f.err)
+}
+func (f *fakeCatalog) Series(_ context.Context, _ int) (*catalog.Series, error) {
+	return fixture(f.series, f.err)
+}
+func (f *fakeCatalog) Season(_ context.Context, _, _ int) (*catalog.Season, error) {
+	return fixture(f.season, f.err)
+}
+func (f *fakeCatalog) Seasons(_ context.Context, _ int, _ []int) (map[int]*tmdb.SeasonDetails, error) {
+	return f.seasons, f.err
+}
+func (f *fakeCatalog) Episode(_ context.Context, _, _, _ int) (*catalog.Episode, error) {
+	return fixture(f.episode, f.err)
+}
+func (f *fakeCatalog) Person(_ context.Context, _ int) (*catalog.Person, error) {
+	return fixture(f.person, f.err)
+}
+
+// SeedSearch maps every result onto itself, as if each already had a row with the provider's id.
+func (f *fakeCatalog) SeedSearch(_ context.Context, results *tmdb.SearchResults) (*catalog.SearchRefs, error) {
+	refs := &catalog.SearchRefs{Movies: catalog.IDs{}, Series: catalog.IDs{}, People: catalog.PeopleDates{}}
+	for _, r := range results.Results {
+		switch r.MediaType {
+		case tmdb.MediaTypeMovie:
+			refs.Movies[r.ID] = r.ID
+		case tmdb.MediaTypeTV:
+			refs.Series[r.ID] = r.ID
+		case tmdb.MediaTypePerson:
+			refs.People[r.ID] = store.PersonDates{ID: r.ID}
+		}
+	}
+	return refs, f.err
+}
+
+// The Resolve* snapshots are the Fight Club and Breaking Bad values the watch-event and watchlist
+// tests were written against.
+func (f *fakeCatalog) ResolveMovie(_ context.Context, _ int) (store.ResolvedMedia, error) {
+	return store.ResolvedMedia{
+		Title:          "Fight Club",
+		Genres:         []string{"Drama"},
+		RuntimeMinutes: ptr(139),
+	}, f.err
+}
+func (f *fakeCatalog) ResolveSeries(_ context.Context, _ int) (store.ResolvedMedia, error) {
+	return store.ResolvedMedia{Title: "Breaking Bad", Genres: []string{"Drama"}, RuntimeMinutes: ptr(47)}, f.err
+}
+func (f *fakeCatalog) ResolveSeason(_ context.Context, _, _ int) (store.ResolvedMedia, error) {
+	return store.ResolvedMedia{Title: "Season 1", SeriesTitle: ptr("Breaking Bad"), EpisodeCount: ptr(7)}, f.err
+}
+func (f *fakeCatalog) ResolveEpisode(_ context.Context, _, _, _ int) (store.ResolvedMedia, error) {
+	return store.ResolvedMedia{Title: "Pilot", SeriesTitle: ptr("Breaking Bad"), RuntimeMinutes: ptr(58)}, f.err
+}
+
+func fixture[T any](v *T, err error) (*T, error) {
+	if err != nil {
+		return nil, err
+	}
+	if v == nil {
+		return nil, catalog.ErrNotFound
+	}
+	return v, nil
+}
+
+func ptr[T any](v T) *T {
+	return &v
 }
 
 // --- fake store implementations ---
@@ -238,54 +300,13 @@ func (f *fakeStatsStore) GetStats(_ context.Context, _ string) (*store.StatsResu
 	return f.stats, f.getErr
 }
 
-type fakeSeasonCastCache struct{}
-
-func (f *fakeSeasonCastCache) Get(_ context.Context, _, _ int) (map[int]int, bool) { return nil, false }
-func (f *fakeSeasonCastCache) Set(_ context.Context, _, _ int, _ map[int]int, _ time.Time) {
-}
-
-// --- TMDB test server for MetadataResolver ---
-
-func newTMDBTestServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/movie/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(tmdb.Movie{
-			ID:          550,
-			Title:       "Fight Club",
-			PosterPath:  "/poster.jpg",
-			ReleaseDate: "1999-10-15",
-			Runtime:     139,
-			VoteAverage: 8.4,
-			Genres:      []tmdb.Genre{{ID: 18, Name: "Drama"}},
-		})
-	})
-
-	mux.HandleFunc("/tv/", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(tmdb.Series{
-			ID:             1396,
-			Name:           "Breaking Bad",
-			PosterPath:     "/bb.jpg",
-			FirstAirDate:   "2008-01-20",
-			EpisodeRunTime: []int{47},
-			VoteAverage:    8.9,
-			Genres:         []tmdb.Genre{{ID: 18, Name: "Drama"}},
-		})
-	})
-
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv
-}
-
 // --- testDeps wires up all fakes ---
 
 type testDeps struct {
 	handlers         *Handlers
 	mediaClient      *fakeTmdbClient
+	catalog          *fakeCatalog
+	bg               *background.Group
 	userStore        *fakeUserStore
 	sessionStore     *fakeSessionStore
 	authCodeStore    *fakeAuthCodeStore
@@ -298,15 +319,9 @@ type testDeps struct {
 func newTestHandlers(t *testing.T) *testDeps {
 	t.Helper()
 
-	tmdbSrv := newTMDBTestServer(t)
-	client := tmdb.NewClient(tmdb.Config{
-		BaseURL:     tmdbSrv.URL,
-		Timeout:     5,
-		AccessToken: "test-token",
-	})
-	resolver := tmdb.NewMetadataResolver(client)
-
 	mc := &fakeTmdbClient{}
+	cat := &fakeCatalog{}
+	var bg background.Group
 	us := &fakeUserStore{canExport: true}
 	ss := &fakeSessionStore{}
 	acs := &fakeAuthCodeStore{}
@@ -320,8 +335,8 @@ func newTestHandlers(t *testing.T) *testDeps {
 			MiniMovieUiSecret: "test-secret",
 		},
 		TmdbClient:       mc,
-		TmdbResolver:     resolver,
-		SeasonCastCache:  &fakeSeasonCastCache{},
+		Catalog:          cat,
+		BG:               &bg,
 		Providers:        &fakeProviderRegistry{},
 		UserStore:        us,
 		SessionStore:     ss,
@@ -335,6 +350,8 @@ func newTestHandlers(t *testing.T) *testDeps {
 	return &testDeps{
 		handlers:         h,
 		mediaClient:      mc,
+		catalog:          cat,
+		bg:               &bg,
 		userStore:        us,
 		sessionStore:     ss,
 		authCodeStore:    acs,

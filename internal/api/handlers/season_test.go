@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,19 +14,23 @@ import (
 
 func TestGetSeason_Success(t *testing.T) {
 	td := newTestHandlers(t)
-	td.mediaClient.season = &tmdb.SeasonDetails{
-		ID:           3572,
-		Name:         "Season 1",
-		SeasonNumber: 1,
-		AirDate:      "2008-01-20",
-		Episodes: []tmdb.Episode{
-			{
-				ID:            62085,
-				Name:          "Pilot",
-				EpisodeNumber: 1,
-				SeasonNumber:  1,
+	td.catalog.season = &catalog.Season{
+		SeasonDetails: &tmdb.SeasonDetails{
+			ID:           3572,
+			Name:         "Season 1",
+			SeasonNumber: 1,
+			AirDate:      "2008-01-20",
+			Episodes: []tmdb.Episode{
+				{
+					ID:            62085,
+					Name:          "Pilot",
+					EpisodeNumber: 1,
+					SeasonNumber:  1,
+				},
 			},
 		},
+		ID:         11,
+		EpisodeIDs: catalog.IDs{1: 101},
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/series/1399/seasons/1", nil)
@@ -38,9 +43,10 @@ func TestGetSeason_Success(t *testing.T) {
 
 	var resp SeasonDetails
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	assert.Equal(t, 3572, resp.ID)
+	assert.Equal(t, 11, resp.ID)
 	assert.Equal(t, "Season 1", resp.Name)
 	require.Len(t, resp.Episodes, 1)
+	assert.Equal(t, 101, resp.Episodes[0].ID)
 	assert.Equal(t, "Pilot", resp.Episodes[0].Name)
 }
 

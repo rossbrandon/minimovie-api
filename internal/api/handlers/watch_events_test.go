@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -31,6 +32,7 @@ func TestCreateWatchEvent_Movie(t *testing.T) {
 	decodeJSON(t, w, &resp)
 	assert.NotEmpty(t, resp["id"], "response should carry the deterministic watch event id")
 	assert.NotEmpty(t, resp["watchlistItemId"], "response should carry the synchronous watchlist item id")
+	require.NoError(t, td.bg.Wait(context.Background()), "the write runs detached from the request")
 }
 
 func TestCreateWatchEvent_InvalidTimezone(t *testing.T) {

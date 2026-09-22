@@ -29,24 +29,24 @@ type Movie struct {
 
 type Collection struct {
 	*tmdb.Collection
-	ID    int
-	Slug  string
-	Parts IDs
+	ID      int
+	Slug    string
+	PartIDs IDs
 }
 
 type Series struct {
 	*tmdb.Series
-	ID      int
-	Slug    string
-	Seasons IDs
-	People  PeopleDates
+	ID        int
+	Slug      string
+	SeasonIDs IDs
+	People    PeopleDates
 }
 
 type Season struct {
 	*tmdb.SeasonDetails
-	ID       int
-	Episodes IDs
-	People   PeopleDates
+	ID         int
+	EpisodeIDs IDs
+	People     PeopleDates
 }
 
 type Episode struct {
@@ -57,10 +57,10 @@ type Episode struct {
 
 type Person struct {
 	*tmdb.Person
-	ID     int
-	Slug   string
-	Movies IDs
-	Series IDs
+	ID        int
+	Slug      string
+	MovieIDs  IDs
+	SeriesIDs IDs
 }
 
 type SearchRefs struct {
@@ -98,7 +98,7 @@ func (s *Service) Collection(ctx context.Context, id int) (*Collection, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Collection{Collection: &c, ID: row.ID, Slug: row.Slug, Parts: parts}, nil
+	return &Collection{Collection: &c, ID: row.ID, Slug: row.Slug, PartIDs: parts}, nil
 }
 
 func (s *Service) Series(ctx context.Context, id int) (*Series, error) {
@@ -114,7 +114,7 @@ func (s *Service) Series(ctx context.Context, id int) (*Series, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Series{Series: sr, ID: row.ID, Slug: row.Slug, Seasons: seasons, People: people}, nil
+	return &Series{Series: sr, ID: row.ID, Slug: row.Slug, SeasonIDs: seasons, People: people}, nil
 }
 
 func (s *Service) Season(ctx context.Context, seriesID, seasonNumber int) (*Season, error) {
@@ -134,7 +134,7 @@ func (s *Service) Season(ctx context.Context, seriesID, seasonNumber int) (*Seas
 	if err != nil {
 		return nil, err
 	}
-	return &Season{SeasonDetails: sd, ID: row.ID, Episodes: episodes, People: people}, nil
+	return &Season{SeasonDetails: sd, ID: row.ID, EpisodeIDs: episodes, People: people}, nil
 }
 
 func (s *Service) Seasons(ctx context.Context, seriesID int, numbers []int) (map[int]*tmdb.SeasonDetails, error) {
@@ -193,7 +193,7 @@ func (s *Service) Person(ctx context.Context, id int) (*Person, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Person{Person: p, ID: row.ID, Slug: row.Slug, Movies: movies, Series: series}, nil
+	return &Person{Person: p, ID: row.ID, Slug: row.Slug, MovieIDs: movies, SeriesIDs: series}, nil
 }
 
 func (s *Service) SeedSearch(ctx context.Context, results *tmdb.SearchResults) (*SearchRefs, error) {

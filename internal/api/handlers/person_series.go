@@ -1,13 +1,13 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
-	"strconv"
-	"sync"
-	"time"
+	"slices"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog/log"
@@ -53,169 +53,127 @@ type PersonSeriesCredits struct {
 }
 
 func (h *Handlers) GetPersonSeriesCredits(w http.ResponseWriter, r *http.Request) {
-	seriesIDStr := chi.URLParam(r, "seriesId")
-	seriesID, err := strconv.Atoi(seriesIDStr)
-	if err != nil {
+	seriesID, ok := catalog.ParseSlugID(chi.URLParam(r, "seriesId"))
+	if !ok {
 		httputil.Error(w, http.StatusBadRequest, "Invalid series ID")
 		return
 	}
-
-	personIDStr := chi.URLParam(r, "personId")
-	personID, err := strconv.Atoi(personIDStr)
-	if err != nil {
+	personID, ok := catalog.ParseSlugID(chi.URLParam(r, "personId"))
+	if !ok {
 		httputil.Error(w, http.StatusBadRequest, "Invalid person ID")
 		return
 	}
 
-	data, err := h.tmdbClient.GetSeriesWithSeasons(r.Context(), seriesID)
+	sr, err := h.catalog.Series(r.Context(), seriesID)
 	if err != nil {
-		if errors.Is(err, tmdb.ErrNotFound) {
+		if errors.Is(err, catalog.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "Series not found")
 			return
 		}
-		log.Error().Err(err).Int("series_id", seriesID).Int("person_id", personID).Msg("failed to fetch series with seasons")
+		log.Error().Err(err).Int("series_id", seriesID).Int("person_id", personID).Msg("failed to fetch series")
 		httputil.Error(w, http.StatusInternalServerError, "Failed to fetch series data")
 		return
 	}
 
-	var member *tmdb.AggregateCastMember
-	for i, c := range data.AggregateCredits.Cast {
-		if c.ID == personID {
-			member = &data.AggregateCredits.Cast[i]
-			break
-		}
-	}
+	member := seriesCastMember(sr, personID)
 	if member == nil {
 		httputil.Error(w, http.StatusNotFound, "Person not found in series credits")
 		return
 	}
-
 	roles := make([]RoleSummary, len(member.Roles))
 	for i, r := range member.Roles {
 		roles[i] = RoleSummary{Character: r.Character}
 	}
 
-	seriesFinished := data.Status == "Ended" || data.Status == "Canceled"
-
-	// Resolve per-season cast maps: check cache, then fetch misses concurrently
-	seasonCastMaps := make(map[int]map[int]int)
-	var missedSeasons []int
-
-	for i := 1; i <= data.NumberOfSeasons; i++ {
-		if _, ok := data.SeasonDetails[i]; !ok {
-			continue
-		}
-		castMap, ok := h.seasonCastCache.Get(r.Context(), seriesID, i)
-		if ok {
-			seasonCastMaps[i] = castMap
-		} else {
-			missedSeasons = append(missedSeasons, i)
-		}
+	seasons, err := h.personSeasons(r.Context(), sr, member.ID)
+	if err != nil {
+		log.Error().Err(err).Int("series_id", seriesID).Msg("failed to fetch seasons")
+		httputil.Error(w, http.StatusInternalServerError, "Failed to fetch series data")
+		return
 	}
 
-	if len(missedSeasons) > 0 {
-		var mu sync.Mutex
-		var wg sync.WaitGroup
-
-		for _, sn := range missedSeasons {
-			wg.Add(1)
-			go func(seasonNum int) {
-				defer wg.Done()
-				credits, err := h.tmdbClient.GetSeasonAggregateCredits(r.Context(), seriesID, seasonNum)
-				if err != nil {
-					log.Warn().Err(err).Int("series_id", seriesID).Int("season", seasonNum).Msg("failed to fetch season aggregate credits")
-					return
-				}
-
-				castMap := make(map[int]int, len(credits.Cast))
-				for _, c := range credits.Cast {
-					castMap[c.ID] = c.TotalEpisodeCount
-				}
-
-				var expiresAt time.Time
-				if seriesFinished || seasonNum < data.NumberOfSeasons {
-					expiresAt = time.Now().Add(6 * 30 * 24 * time.Hour) // ~6 months
-				} else {
-					expiresAt = time.Now().Add(24 * time.Hour)
-				}
-
-				h.seasonCastCache.Set(r.Context(), seriesID, seasonNum, castMap, expiresAt)
-
-				mu.Lock()
-				seasonCastMaps[seasonNum] = castMap
-				mu.Unlock()
-			}(sn)
-		}
-		wg.Wait()
-	}
-
-	var seasons []PersonSeasonDetail
-	for i := 1; i <= data.NumberOfSeasons; i++ {
-		sd, ok := data.SeasonDetails[i]
-		if !ok {
-			continue
-		}
-
-		castMap := seasonCastMaps[i]
-		personEpCount := 0
-		if castMap != nil {
-			personEpCount = castMap[personID]
-		}
-		inAllEpisodes := personEpCount >= len(sd.Episodes)
-
-		var episodes []PersonEpisodeDetail
-		for _, ep := range sd.Episodes {
-			if inAllEpisodes {
-				episodes = append(episodes, PersonEpisodeDetail{
-					EpisodeNumber: ep.EpisodeNumber,
-					Name:          ep.Name,
-					AirDate:       ep.AirDate,
-					StillPath:     ep.StillPath,
-				})
-				continue
-			}
-
-			for _, gs := range ep.GuestStars {
-				if gs.ID == personID {
-					episodes = append(episodes, PersonEpisodeDetail{
-						EpisodeNumber: ep.EpisodeNumber,
-						Name:          ep.Name,
-						AirDate:       ep.AirDate,
-						StillPath:     ep.StillPath,
-					})
-					break
-				}
-			}
-		}
-
-		if len(episodes) == 0 {
-			continue
-		}
-
-		seasons = append(seasons, PersonSeasonDetail{
-			SeasonNumber:  sd.SeasonNumber,
-			Name:          sd.Name,
-			AirDate:       sd.AirDate,
-			TotalEpisodes: len(sd.Episodes),
-			Episodes:      episodes,
-		})
-	}
-
-	response := PersonSeriesCredits{
+	httputil.JSON(w, http.StatusOK, PersonSeriesCredits{
 		Person: PersonSummary{
-			ID:        member.ID,
+			ID:        personID,
 			Name:      member.Name,
 			PhotoPath: member.ProfilePath,
 		},
 		Series: SeriesSummary{
-			ID:         data.ID,
-			Name:       data.Name,
-			PosterPath: data.PosterPath,
+			ID:         sr.ID,
+			Name:       sr.Name,
+			PosterPath: sr.PosterPath,
 		},
 		TotalEpisodeCount: member.TotalEpisodeCount,
 		Roles:             roles,
 		Seasons:           seasons,
-	}
+	})
+}
 
-	httputil.JSON(w, http.StatusOK, response)
+func (h *Handlers) personSeasons(
+	ctx context.Context,
+	sr *catalog.Series,
+	personSourceID int,
+) ([]PersonSeasonDetail, error) {
+	numbers := make([]int, 0, sr.NumberOfSeasons)
+	for n := 1; n <= sr.NumberOfSeasons; n++ {
+		numbers = append(numbers, n)
+	}
+	docs, err := h.catalog.Seasons(ctx, sr.ID, numbers)
+	if err != nil {
+		return nil, err
+	}
+	var seasons []PersonSeasonDetail
+	for _, n := range numbers {
+		if season, ok := personSeason(docs[n], personSourceID); ok {
+			seasons = append(seasons, season)
+		}
+	}
+	return seasons, nil
+}
+
+func seriesCastMember(sr *catalog.Series, personID int) *tmdb.AggregateCastMember {
+	for i, c := range sr.AggregateCredits.Cast {
+		if sr.People[c.ID].ID == personID {
+			return &sr.AggregateCredits.Cast[i]
+		}
+	}
+	return nil
+}
+
+func personSeason(sd *tmdb.SeasonDetails, personSourceID int) (PersonSeasonDetail, bool) {
+	if sd == nil {
+		return PersonSeasonDetail{}, false
+	}
+	var episodeCount int
+	for _, c := range sd.AggregateCredits.Cast {
+		if c.ID == personSourceID {
+			episodeCount = c.TotalEpisodeCount
+			break
+		}
+	}
+	inAllEpisodes := episodeCount >= len(sd.Episodes)
+
+	var episodes []PersonEpisodeDetail
+	for _, ep := range sd.Episodes {
+		guest := slices.ContainsFunc(ep.GuestStars, func(g tmdb.CastMember) bool { return g.ID == personSourceID })
+		if !inAllEpisodes && !guest {
+			continue
+		}
+		episodes = append(episodes, PersonEpisodeDetail{
+			EpisodeNumber: ep.EpisodeNumber,
+			Name:          ep.Name,
+			AirDate:       ep.AirDate,
+			StillPath:     ep.StillPath,
+		})
+	}
+	if len(episodes) == 0 {
+		return PersonSeasonDetail{}, false
+	}
+	return PersonSeasonDetail{
+		SeasonNumber:  sd.SeasonNumber,
+		Name:          sd.Name,
+		AirDate:       sd.AirDate,
+		TotalEpisodes: len(sd.Episodes),
+		Episodes:      episodes,
+	}, true
 }

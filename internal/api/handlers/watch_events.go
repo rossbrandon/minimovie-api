@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -79,7 +80,9 @@ func (h *Handlers) CreateWatchEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go h.processWatchEvent(user.ID, req, tz, watchEventId, watchlistItemId, needsWatchlistCreate)
+	h.bg.Go(r.Context(), "watch_event", 30*time.Second, func(ctx context.Context) error {
+		return h.processWatchEvent(ctx, user.ID, req, tz, watchEventId, watchlistItemId, needsWatchlistCreate)
+	})
 
 	httputil.JSON(w, http.StatusAccepted, map[string]string{
 		"id":              watchEventId,
@@ -124,21 +127,18 @@ func validateCreateWatchEvent(req createWatchEventRequest) string {
 	return ""
 }
 
-func (h *Handlers) processWatchEvent(userId string, req createWatchEventRequest, tz string, watchEventId string, watchlistItemId string, needsWatchlistCreate bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
+func (h *Handlers) processWatchEvent(
+	ctx context.Context,
+	userID string,
+	req createWatchEventRequest,
+	tz string,
+	watchEventID string,
+	watchlistItemID string,
+	needsWatchlistCreate bool,
+) error {
 	meta, err := h.resolveMetadata(ctx, req.MediaType, req.MediaID, req.SeriesID, req.SeasonNumber, req.EpisodeNumber)
 	if err != nil {
-		log.Error().Err(err).Str("mediaType", req.MediaType).Int("mediaId", req.MediaID).Msg("failed to resolve metadata for watch event")
-		return
-	}
-
-	if meta.RuntimeMinutes == nil && (req.MediaType == "series" || req.MediaType == "season") {
-		runtime := h.resolveRuntimeFromSeasons(ctx, req.MediaType, req.MediaID, req.SeriesID, req.SeasonNumber)
-		if runtime > 0 {
-			meta.RuntimeMinutes = &runtime
-		}
+		return fmt.Errorf("resolve %s %d: %w", req.MediaType, req.MediaID, err)
 	}
 
 	var watchedAt *time.Time
@@ -148,8 +148,8 @@ func (h *Handlers) processWatchEvent(userId string, req createWatchEventRequest,
 	}
 
 	input := store.WatchEventCreate{
-		ID:            watchEventId,
-		UserID:        userId,
+		ID:            watchEventID,
+		UserID:        userID,
 		MediaType:     req.MediaType,
 		MediaID:       req.MediaID,
 		SeriesID:      req.SeriesID,
@@ -170,18 +170,18 @@ func (h *Handlers) processWatchEvent(userId string, req createWatchEventRequest,
 		writeFn = h.watchEventStore.MarkSeason
 	}
 	if _, err := writeFn(ctx, input); err != nil {
-		log.Error().Err(err).Str("mediaType", req.MediaType).Int("mediaId", req.MediaID).Msg("failed to create watch event")
-		return
+		return fmt.Errorf("create %s %d: %w", req.MediaType, req.MediaID, err)
 	}
 
 	lookupType, lookupID := getWatchlistTarget(req.MediaType, req.MediaID, req.SeriesID)
 	if needsWatchlistCreate {
-		h.createWatchlistFromEvent(ctx, watchlistItemId, userId, req.MediaType, lookupType, lookupID, meta)
+		h.createWatchlistFromEvent(ctx, watchlistItemID, userID, req.MediaType, lookupType, lookupID, meta)
 	}
-	if err := h.watchlistStore.UpdateSummary(ctx, userId, lookupType, lookupID); err != nil {
-		log.Warn().Err(err).Str("mediaType", lookupType).Int("mediaId", lookupID).Msg("watchlist UpdateSummary failed")
+	if err := h.watchlistStore.UpdateSummary(ctx, userID, lookupType, lookupID); err != nil {
+		return fmt.Errorf("update %s %d summary: %w", lookupType, lookupID, err)
 	}
-	h.trackWatchEvent(ctx, userId, "create", req.MediaType)
+	h.trackWatchEvent(ctx, userID, "create", req.MediaType)
+	return nil
 }
 
 // createWatchlistFromEvent inserts a watchlist row using the caller-supplied
@@ -189,12 +189,17 @@ func (h *Handlers) processWatchEvent(userId string, req createWatchEventRequest,
 // row has the right title/poster for the user's list view. A unique-violation
 // here is benign (a concurrent goroutine for the same user+media won the race)
 // and surfaces only as a warning log.
-func (h *Handlers) createWatchlistFromEvent(ctx context.Context, id, userId, eventMediaType, lookupType string, lookupID int, eventMeta store.ResolvedMedia) {
+func (h *Handlers) createWatchlistFromEvent(
+	ctx context.Context,
+	id, userID, eventMediaType, lookupType string,
+	lookupID int,
+	eventMeta store.ResolvedMedia,
+) {
 	syncMeta := eventMeta
 	if lookupType != eventMediaType {
-		resolved, err := h.tmdbResolver.ResolveSeries(ctx, lookupID)
+		resolved, err := h.catalog.ResolveSeries(ctx, lookupID)
 		if err != nil {
-			log.Warn().Err(err).Int("seriesId", lookupID).Msg("series re-resolve failed during watchlist sync; using event meta")
+			log.Warn().Err(err).Int("series_id", lookupID).Msg("series re-resolve failed; using the event's snapshot")
 		} else {
 			syncMeta = resolved
 		}
@@ -202,14 +207,14 @@ func (h *Handlers) createWatchlistFromEvent(ctx context.Context, id, userId, eve
 	_, err := h.watchlistStore.Create(
 		ctx,
 		id,
-		userId,
+		userID,
 		lookupType,
 		lookupID,
 		"watched",
 		syncMeta.Title,
 	)
 	if err != nil {
-		log.Warn().Err(err).Str("mediaType", lookupType).Int("mediaId", lookupID).Msg("watchlist auto-add failed")
+		log.Warn().Err(err).Str("media_type", lookupType).Int("media_id", lookupID).Msg("watchlist auto-add failed")
 	}
 }
 
@@ -348,58 +353,30 @@ func (h *Handlers) UnmarkEpisode(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handlers) resolveMetadata(ctx context.Context, mediaType string, mediaId int, seriesId, seasonNumber, episodeNumber *int) (store.ResolvedMedia, error) {
+func (h *Handlers) resolveMetadata(
+	ctx context.Context,
+	mediaType string,
+	mediaID int,
+	seriesID, seasonNumber, episodeNumber *int,
+) (store.ResolvedMedia, error) {
 	switch mediaType {
 	case "movie":
-		return h.tmdbResolver.ResolveMovie(ctx, mediaId)
+		return h.catalog.ResolveMovie(ctx, mediaID)
 	case "series":
-		return h.tmdbResolver.ResolveSeries(ctx, mediaId)
+		return h.catalog.ResolveSeries(ctx, mediaID)
 	case "season":
-		if seriesId == nil || seasonNumber == nil {
+		if seriesID == nil || seasonNumber == nil {
 			return store.ResolvedMedia{}, nil
 		}
-		return h.tmdbResolver.ResolveSeason(ctx, *seriesId, *seasonNumber)
+		return h.catalog.ResolveSeason(ctx, *seriesID, *seasonNumber)
 	case "episode":
-		if seriesId == nil || seasonNumber == nil || episodeNumber == nil {
+		if seriesID == nil || seasonNumber == nil || episodeNumber == nil {
 			return store.ResolvedMedia{}, nil
 		}
-		return h.tmdbResolver.ResolveEpisode(ctx, *seriesId, *seasonNumber, *episodeNumber)
+		return h.catalog.ResolveEpisode(ctx, *seriesID, *seasonNumber, *episodeNumber)
 	default:
 		return store.ResolvedMedia{}, nil
 	}
-}
-
-func (h *Handlers) resolveRuntimeFromSeasons(ctx context.Context, mediaType string, mediaId int, seriesId, seasonNumber *int) int {
-	switch mediaType {
-	case "series":
-		seriesWithSeasons, err := h.tmdbClient.GetSeriesWithSeasons(ctx, mediaId)
-		if err != nil {
-			log.Warn().Err(err).Int("mediaId", mediaId).Msg("failed to fetch series with seasons for runtime")
-			return 0
-		}
-		var total int
-		for _, season := range seriesWithSeasons.SeasonDetails {
-			for _, ep := range season.Episodes {
-				total += ep.Runtime
-			}
-		}
-		return total
-	case "season":
-		if seriesId == nil || seasonNumber == nil {
-			return 0
-		}
-		season, err := h.tmdbClient.GetSeason(ctx, *seriesId, *seasonNumber)
-		if err != nil {
-			log.Warn().Err(err).Msg("failed to fetch season for runtime")
-			return 0
-		}
-		var total int
-		for _, ep := range season.Episodes {
-			total += ep.Runtime
-		}
-		return total
-	}
-	return 0
 }
 
 func getWatchlistTarget(mediaType string, mediaId int, seriesId *int) (string, int) {

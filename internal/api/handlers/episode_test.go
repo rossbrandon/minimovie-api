@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,14 +14,17 @@ import (
 
 func TestGetEpisode_Success(t *testing.T) {
 	td := newTestHandlers(t)
-	td.mediaClient.episode = &tmdb.EpisodeDetails{
-		ID:            62085,
-		Name:          "Pilot",
-		EpisodeNumber: 1,
-		SeasonNumber:  1,
-		AirDate:       "2008-01-20",
-		Runtime:       58,
-		VoteAverage:   7.7,
+	td.catalog.episode = &catalog.Episode{
+		EpisodeDetails: &tmdb.EpisodeDetails{
+			ID:            62085,
+			Name:          "Pilot",
+			EpisodeNumber: 1,
+			SeasonNumber:  1,
+			AirDate:       "2008-01-20",
+			Runtime:       58,
+			VoteAverage:   7.7,
+		},
+		ID: 101,
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/series/1399/seasons/1/episodes/1", nil)
@@ -37,7 +41,7 @@ func TestGetEpisode_Success(t *testing.T) {
 
 	var resp EpisodeDetails
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	assert.Equal(t, 62085, resp.ID)
+	assert.Equal(t, 101, resp.ID)
 	assert.Equal(t, "Pilot", resp.Name)
 	assert.Equal(t, 1, resp.EpisodeNumber)
 	assert.Equal(t, 58, resp.Runtime)

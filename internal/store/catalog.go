@@ -30,6 +30,12 @@ type DBTX interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+// Purgeable is a table whose expired rows the daily job deletes.
+type Purgeable interface {
+	DeleteExpired(ctx context.Context) (rowsDeleted int64, err error)
+	TableName() string
+}
+
 // WorkClass orders the daily job's refresh and hydration work.
 type WorkClass int
 

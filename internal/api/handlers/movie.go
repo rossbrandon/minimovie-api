@@ -1,11 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog/log"
@@ -13,6 +14,7 @@ import (
 
 type MovieDetails struct {
 	ID                  int             `json:"id"`
+	Slug                string          `json:"slug,omitempty"`
 	ImdbID              string          `json:"imdbID"`
 	Title               string          `json:"title"`
 	Tagline             string          `json:"tagline"`
@@ -45,16 +47,15 @@ type CollectionInfo struct {
 }
 
 func (h *Handlers) GetMovie(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
+	id, ok := catalog.ParseSlugID(chi.URLParam(r, "id"))
+	if !ok {
 		httputil.Error(w, http.StatusBadRequest, "Invalid movie ID")
 		return
 	}
 
-	movie, err := h.tmdbClient.GetMovie(r.Context(), id)
+	m, err := h.catalog.Movie(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, tmdb.ErrNotFound) {
+		if errors.Is(err, catalog.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "Movie not found")
 			return
 		}
@@ -63,19 +64,26 @@ func (h *Handlers) GetMovie(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	details := toMovieDetails(movie)
-	h.enrichCreditsWithAges(r.Context(), details.Credits, movie.ReleaseDate, movie.ReleaseDate)
-
-	if movie.BelongsToCollection != nil {
-		collection, err := h.tmdbClient.GetCollection(r.Context(), movie.BelongsToCollection.ID)
-		if err != nil {
-			log.Warn().Err(err).Int("collection_id", movie.BelongsToCollection.ID).Msg("failed to fetch collection")
-		} else {
-			details.CollectionInfo = toCollectionInfo(collection)
-		}
-	}
+	details := toMovieDetails(m.Movie)
+	details.ID, details.Slug = m.ID, m.Slug
+	applyPeople(details.Credits, m.People, m.ReleaseDate, m.ReleaseDate)
+	details.CollectionInfo = h.collectionInfo(r.Context(), m.CollectionID)
 
 	httputil.JSON(w, http.StatusOK, details)
+}
+
+func (h *Handlers) collectionInfo(ctx context.Context, id *int) *CollectionInfo {
+	if id == nil {
+		return nil
+	}
+	c, err := h.catalog.Collection(ctx, *id)
+	if err != nil {
+		if !errors.Is(err, catalog.ErrNotFound) {
+			log.Warn().Err(err).Int("collection_id", *id).Msg("failed to fetch collection")
+		}
+		return nil
+	}
+	return toCollectionInfo(c)
 }
 
 func toMovieDetails(movie *tmdb.Movie) *MovieDetails {
@@ -129,24 +137,28 @@ func toMovieDetails(movie *tmdb.Movie) *MovieDetails {
 	}
 }
 
-func toCollectionInfo(collection *tmdb.Collection) *CollectionInfo {
-	parts := make([]MovieDetails, len(collection.Parts))
-	for i, p := range collection.Parts {
-		parts[i] = MovieDetails{
-			ID:          p.ID,
+func toCollectionInfo(c *catalog.Collection) *CollectionInfo {
+	parts := make([]MovieDetails, 0, len(c.Parts))
+	for _, p := range c.Parts {
+		id, ok := c.PartIDs[p.ID]
+		if !ok {
+			continue
+		}
+		parts = append(parts, MovieDetails{
+			ID:          id,
 			Title:       p.Title,
 			Overview:    p.Overview,
 			PosterPath:  p.PosterPath,
 			ReleaseDate: p.ReleaseDate,
 			VoteAverage: p.VoteAverage,
-		}
+		})
 	}
 
 	return &CollectionInfo{
-		ID:         collection.ID,
-		Name:       collection.Name,
-		Overview:   collection.Overview,
-		PosterPath: collection.PosterPath,
+		ID:         c.ID,
+		Name:       c.Name,
+		Overview:   c.Overview,
+		PosterPath: c.PosterPath,
 		Parts:      parts,
 	}
 }

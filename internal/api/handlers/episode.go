@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog/log"
@@ -27,9 +28,8 @@ type EpisodeDetails struct {
 }
 
 func (h *Handlers) GetEpisode(w http.ResponseWriter, r *http.Request) {
-	seriesIDStr := chi.URLParam(r, "seriesId")
-	seriesID, err := strconv.Atoi(seriesIDStr)
-	if err != nil {
+	seriesID, ok := catalog.ParseSlugID(chi.URLParam(r, "seriesId"))
+	if !ok {
 		httputil.Error(w, http.StatusBadRequest, "Invalid series ID")
 		return
 	}
@@ -48,19 +48,21 @@ func (h *Handlers) GetEpisode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	episode, err := h.tmdbClient.GetEpisode(r.Context(), seriesID, seasonNum, episodeNum)
+	ep, err := h.catalog.Episode(r.Context(), seriesID, seasonNum, episodeNum)
 	if err != nil {
-		if errors.Is(err, tmdb.ErrNotFound) {
+		if errors.Is(err, catalog.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "Episode not found")
 			return
 		}
-		log.Error().Err(err).Int("series_id", seriesID).Int("season", seasonNum).Int("episode", episodeNum).Msg("failed to fetch episode")
+		log.Error().Err(err).Int("series_id", seriesID).Int("season_number", seasonNum).
+			Int("episode_number", episodeNum).Msg("failed to fetch episode")
 		httputil.Error(w, http.StatusInternalServerError, "Failed to fetch episode")
 		return
 	}
 
-	details := toEpisodeDetails(episode)
-	h.enrichCreditsWithAges(r.Context(), details.Credits, episode.AirDate, episode.AirDate)
+	details := toEpisodeDetails(ep.EpisodeDetails)
+	details.ID = ep.ID
+	applyPeople(details.Credits, ep.People, ep.AirDate, ep.AirDate)
 
 	httputil.JSON(w, http.StatusOK, details)
 }

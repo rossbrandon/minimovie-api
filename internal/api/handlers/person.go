@@ -4,11 +4,11 @@ import (
 	"errors"
 	"net/http"
 	"sort"
-	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/rossbrandon/minimovie-api/internal/age"
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog/log"
@@ -16,6 +16,7 @@ import (
 
 type PersonDetails struct {
 	ID            int          `json:"id"`
+	Slug          string       `json:"slug,omitempty"`
 	ImdbID        string       `json:"imdbId"`
 	Name          string       `json:"name"`
 	Biography     string       `json:"biography"`
@@ -46,16 +47,15 @@ type FilmCredit struct {
 }
 
 func (h *Handlers) GetPerson(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
+	id, ok := catalog.ParseSlugID(chi.URLParam(r, "id"))
+	if !ok {
 		httputil.Error(w, http.StatusBadRequest, "Invalid person ID")
 		return
 	}
 
-	person, err := h.tmdbClient.GetPerson(r.Context(), id)
+	person, err := h.catalog.Person(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, tmdb.ErrNotFound) {
+		if errors.Is(err, catalog.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "Person not found")
 			return
 		}
@@ -67,7 +67,7 @@ func (h *Handlers) GetPerson(w http.ResponseWriter, r *http.Request) {
 	httputil.JSON(w, http.StatusOK, toPersonDetails(person))
 }
 
-func toPersonDetails(person *tmdb.Person) *PersonDetails {
+func toPersonDetails(person *catalog.Person) *PersonDetails {
 	var deathday string
 	if person.Deathday != nil {
 		deathday = *person.Deathday
@@ -77,6 +77,7 @@ func toPersonDetails(person *tmdb.Person) *PersonDetails {
 
 	return &PersonDetails{
 		ID:            person.ID,
+		Slug:          person.Slug,
 		ImdbID:        person.ImdbID,
 		Name:          person.Name,
 		Biography:     person.Biography,
@@ -88,8 +89,8 @@ func toPersonDetails(person *tmdb.Person) *PersonDetails {
 		PhotoPath:     person.ProfilePath,
 		KnownFor:      person.KnownForDepartment,
 		AlsoKnownAs:   person.AlsoKnownAs,
-		MovieCredits:  buildFilmCredits(person.CombinedCredits, tmdb.MediaTypeMovie),
-		SeriesCredits: buildFilmCredits(person.CombinedCredits, tmdb.MediaTypeTV),
+		MovieCredits:  buildFilmCredits(person.CombinedCredits, tmdb.MediaTypeMovie, person.MovieIDs),
+		SeriesCredits: buildFilmCredits(person.CombinedCredits, tmdb.MediaTypeTV, person.SeriesIDs),
 	}
 }
 
@@ -114,15 +115,16 @@ func genderToString(gender int) string {
 	}
 }
 
-func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []FilmCredit {
+func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType, ids catalog.IDs) []FilmCredit {
 	var result []FilmCredit
 
 	for _, c := range credits.Cast {
-		if c.MediaType != string(mediaType) {
+		id, ok := ids[c.ID]
+		if c.MediaType != string(mediaType) || !ok {
 			continue
 		}
 		result = append(result, FilmCredit{
-			ID:           c.ID,
+			ID:           id,
 			Title:        creditTitle(c.CombinedCreditBase, mediaType),
 			PosterPath:   c.PosterPath,
 			ReleaseDate:  creditDate(c.CombinedCreditBase, mediaType),
@@ -137,11 +139,12 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType) []
 	}
 
 	for _, c := range credits.Crew {
-		if c.MediaType != string(mediaType) {
+		id, ok := ids[c.ID]
+		if c.MediaType != string(mediaType) || !ok {
 			continue
 		}
 		result = append(result, FilmCredit{
-			ID:           c.ID,
+			ID:           id,
 			Title:        creditTitle(c.CombinedCreditBase, mediaType),
 			PosterPath:   c.PosterPath,
 			ReleaseDate:  creditDate(c.CombinedCreditBase, mediaType),

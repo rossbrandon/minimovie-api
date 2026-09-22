@@ -167,7 +167,7 @@ func TestMovie_ConcurrentMissesShareOneFetchAndSeedInBackground(t *testing.T) {
 	assert.Equal(t, "Fight Club Collection", c.Name)
 	part2, err := store.NewMovieStore(testPool).GetBySourceID(ctx, 551)
 	require.NoError(t, err)
-	assert.Equal(t, IDs{550: id, 551: part2.ID}, c.Parts, "parts map from the second load on")
+	assert.Equal(t, IDs{550: id, 551: part2.ID}, c.PartIDs, "parts map from the second load on")
 }
 
 func TestMovie_GoneAtProviderDeletesTheRow(t *testing.T) {
@@ -249,19 +249,19 @@ func TestSeries_MissMapsSeasonsEpisodesAndPeople(t *testing.T) {
 	sr, err := svc.Series(ctx, id)
 	require.NoError(t, err)
 	assert.Equal(t, fmt.Sprintf("%d-breaking-bad", id), sr.Slug)
-	assert.Len(t, sr.Seasons, 2, "season ids are on the first response")
+	assert.Len(t, sr.SeasonIDs, 2, "season ids are on the first response")
 	assert.Equal(t, "1956-03-07", sr.People[17419].DateOfBirth)
 	assert.Positive(t, sr.People[66633].ID, "creators are credited too")
 
 	season, err := svc.Season(ctx, id, 1)
 	require.NoError(t, err)
-	assert.Equal(t, sr.Seasons[1], season.ID)
-	assert.Len(t, season.Episodes, 2)
+	assert.Equal(t, sr.SeasonIDs[1], season.ID)
+	assert.Len(t, season.EpisodeIDs, 2)
 	assert.Equal(t, "1956-03-07", season.People[17419].DateOfBirth)
 
 	ep, err := svc.Episode(ctx, id, 1, 1)
 	require.NoError(t, err)
-	assert.Equal(t, season.Episodes[1], ep.ID)
+	assert.Equal(t, season.EpisodeIDs[1], ep.ID)
 	assert.Equal(t, "Pilot", ep.Name)
 
 	docs, err := svc.Seasons(ctx, id, []int{1, 2})
@@ -337,8 +337,8 @@ func TestPerson_MapsFilmographyOnceSeeded(t *testing.T) {
 
 	got, err = svc.Person(ctx, skeleton.ID)
 	require.NoError(t, err)
-	assert.Len(t, got.Movies, 1, "filmography maps once the seed has run")
-	assert.Len(t, got.Series, 1)
+	assert.Len(t, got.MovieIDs, 1, "filmography maps once the seed has run")
+	assert.Len(t, got.SeriesIDs, 1)
 }
 
 func TestSeedSearch_MapsHeldRowsAndSeedsTheRest(t *testing.T) {

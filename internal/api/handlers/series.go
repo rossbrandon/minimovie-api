@@ -3,9 +3,9 @@ package handlers
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog/log"
@@ -13,6 +13,7 @@ import (
 
 type SeriesDetails struct {
 	ID                  int           `json:"id"`
+	Slug                string        `json:"slug,omitempty"`
 	Name                string        `json:"name"`
 	Tagline             string        `json:"tagline"`
 	Overview            string        `json:"overview"`
@@ -58,16 +59,15 @@ type Season struct {
 }
 
 func (h *Handlers) GetSeries(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
+	id, ok := catalog.ParseSlugID(chi.URLParam(r, "id"))
+	if !ok {
 		httputil.Error(w, http.StatusBadRequest, "Invalid series ID")
 		return
 	}
 
-	series, err := h.tmdbClient.GetSeries(r.Context(), id)
+	sr, err := h.catalog.Series(r.Context(), id)
 	if err != nil {
-		if errors.Is(err, tmdb.ErrNotFound) {
+		if errors.Is(err, catalog.ErrNotFound) {
 			httputil.Error(w, http.StatusNotFound, "Series not found")
 			return
 		}
@@ -76,12 +76,26 @@ func (h *Handlers) GetSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.seriesService.UpdateSeries(id)
-
-	details := toSeriesDetails(series)
-	h.enrichCreditsWithAges(r.Context(), details.Credits, series.FirstAirDate, series.LastAirDate)
+	details := toSeriesDetails(sr.Series)
+	details.ID, details.Slug = sr.ID, sr.Slug
+	details.Seasons = mapSeasons(details.Seasons, sr.SeasonIDs)
+	details.CreatedBy = mapPeople(details.CreatedBy, sr.People, sr.FirstAirDate, sr.LastAirDate)
+	applyPeople(details.Credits, sr.People, sr.FirstAirDate, sr.LastAirDate)
 
 	httputil.JSON(w, http.StatusOK, details)
+}
+
+func mapSeasons(seasons []Season, ids catalog.IDs) []Season {
+	kept := seasons[:0]
+	for _, s := range seasons {
+		id, ok := ids[s.SeasonNumber]
+		if !ok {
+			continue
+		}
+		s.ID = id
+		kept = append(kept, s)
+	}
+	return kept
 }
 
 func toSeriesDetails(series *tmdb.Series) *SeriesDetails {

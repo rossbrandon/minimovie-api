@@ -295,10 +295,6 @@ func TestSeasonStore_SkeletonsThenPayload(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[int]int{1: listed[0].ID, 2: listed[1].ID}, ids)
 
-	counts, err := seasons.PersonEpisodeCounts(ctx, seriesID, 17419)
-	require.NoError(t, err)
-	assert.Empty(t, counts, "skeleton seasons carry no credits")
-
 	payload := json.RawMessage(`{
 		"id": 3572, "season_number": 1, "name": "Season One",
 		"episodes": [{"episode_number": 1, "runtime": 58}, {"episode_number": 2, "runtime": 48}, {"episode_number": 3}],
@@ -307,16 +303,6 @@ func TestSeasonStore_SkeletonsThenPayload(t *testing.T) {
 	id, err := seasons.Upsert(ctx, testPool, Season{SeriesID: seriesID, SeasonNumber: 1, SourceID: 3572, Name: "Season One", Payload: payload})
 	require.NoError(t, err)
 	assert.Equal(t, listed[0].ID, id, "hydration keeps the skeleton's row")
-
-	counts, err = seasons.PersonEpisodeCounts(ctx, seriesID, 17419)
-	require.NoError(t, err)
-	assert.Equal(t, map[int]int{1: 7}, counts)
-	minutes, err := seasons.RuntimeMinutes(ctx, seriesID, 1)
-	require.NoError(t, err)
-	assert.Equal(t, 106, minutes)
-	none, err := seasons.RuntimeMinutes(ctx, seriesID, 2)
-	require.NoError(t, err)
-	assert.Equal(t, 0, none)
 
 	got, err := seasons.Get(ctx, seriesID, 1)
 	require.NoError(t, err)

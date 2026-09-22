@@ -205,43 +205,6 @@ func (s *PersonStore) SetInsights(ctx context.Context, id int, data json.RawMess
 	return nil
 }
 
-func (s *PersonStore) GetPeople(ctx context.Context, sourceIDs []int) (map[int]PersonDates, error) {
-	return s.GetDates(ctx, sourceIDs)
-}
-
-func (s *PersonStore) UpsertPersonBatch(ctx context.Context, people map[int]PersonDates, names map[int]string) error {
-	if len(people) == 0 {
-		return nil
-	}
-	defer metrics.TrackDbDuration(ctx, "write")()
-
-	sourceIDs := make([]int32, 0, len(people))
-	nameArr := make([]string, 0, len(people))
-	dobs := make([]*string, 0, len(people))
-	dods := make([]*string, 0, len(people))
-	for sourceID, dates := range people {
-		sourceIDs = append(sourceIDs, int32(sourceID))
-		nameArr = append(nameArr, names[sourceID])
-		dob, dod := dates.DateOfBirth, dates.DateOfDeath
-		dobs = append(dobs, emptyToNil(&dob))
-		dods = append(dods, emptyToNil(&dod))
-	}
-
-	_, err := s.pool.Exec(ctx, `
-		insert into people (source_id, name, date_of_birth, date_of_death, updated_at)
-		select u.source_id, u.name, u.dob::date, u.dod::date, now()
-		from unnest($1::int[], $2::text[], $3::text[], $4::text[]) as u(source_id, name, dob, dod)
-		on conflict (source_id) do update set
-			name          = case when people.payload is null then excluded.name else people.name end,
-			date_of_birth = coalesce(excluded.date_of_birth, people.date_of_birth),
-			date_of_death = coalesce(excluded.date_of_death, people.date_of_death),
-			updated_at    = now()`, sourceIDs, nameArr, dobs, dods)
-	if err != nil {
-		return fmt.Errorf("person store: upsert batch: %w", err)
-	}
-	return nil
-}
-
 func (s *PersonStore) MarkPeopleStale(ctx context.Context, sourceIDs []int) (int64, error) {
 	return s.MarkStale(ctx, sourceIDs)
 }

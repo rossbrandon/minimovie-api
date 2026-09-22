@@ -1,11 +1,13 @@
 package augur
 
 import (
+	"context"
+	"encoding/json"
+	"time"
+
 	augur "github.com/rossbrandon/augur-go"
 	"github.com/rossbrandon/augur-go/providers/claude"
 	"golang.org/x/sync/singleflight"
-
-	"github.com/rossbrandon/minimovie-api/internal/store"
 )
 
 type Config struct {
@@ -16,9 +18,14 @@ type Config struct {
 	MinConfidence float64
 }
 
+type insightsStore interface {
+	GetInsights(ctx context.Context, id int) (json.RawMessage, *time.Time, error)
+	SetInsights(ctx context.Context, id int, data json.RawMessage) error
+}
+
 type Resolver struct {
 	client        *augur.Client
-	store         *store.InterestingInfoStore
+	store         insightsStore
 	minConfidence float64
 	sf            singleflight.Group
 }
@@ -50,7 +57,7 @@ type PersonInterestingInfo struct {
 }
 
 // New creates a new augur Resolver. Returns nil if cfg.ApiKey is empty (feature disabled).
-func New(infoStore *store.InterestingInfoStore, cfg Config) *Resolver {
+func New(infoStore insightsStore, cfg Config) *Resolver {
 	if cfg.ApiKey == "" {
 		return nil
 	}

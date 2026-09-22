@@ -205,9 +205,6 @@ func TestHydrate_SeriesWritesSkeletonSeasonsAndSeasonsWriteSkeletonEpisodes(t *t
 	require.NoError(t, err)
 	assert.Equal(t, listed[0].ID, season.ID, "hydration fills the skeleton's row")
 	assert.NotNil(t, season.Payload)
-	counts, err := seasons.PersonEpisodeCounts(ctx, row.ID, 17419)
-	require.NoError(t, err)
-	assert.Equal(t, map[int]int{1: 7}, counts)
 
 	pilot, err := episodes.Get(ctx, row.ID, 1, 1)
 	require.NoError(t, err)

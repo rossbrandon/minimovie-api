@@ -7,19 +7,21 @@ import (
 
 	"github.com/rossbrandon/minimovie-api/config"
 	"github.com/rossbrandon/minimovie-api/internal/achievements"
-	"github.com/rossbrandon/minimovie-api/internal/age"
 	"github.com/rossbrandon/minimovie-api/internal/api"
 	"github.com/rossbrandon/minimovie-api/internal/api/handlers"
 	"github.com/rossbrandon/minimovie-api/internal/augur"
 	"github.com/rossbrandon/minimovie-api/internal/auth"
+	"github.com/rossbrandon/minimovie-api/internal/background"
+	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/httputil"
 	"github.com/rossbrandon/minimovie-api/internal/metrics"
-	"github.com/rossbrandon/minimovie-api/internal/series"
 	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
+
+var _ handlers.Catalog = (*catalog.Service)(nil)
 
 func main() {
 	// Load config
@@ -76,43 +78,33 @@ func main() {
 	watchEventStore := store.NewWatchEventStore(pool)
 	achievementStore := store.NewAchievementStore(pool)
 	statsStore := store.NewStatsStore(pool)
-	seriesMetadataStore := store.NewSeriesMetadataStore(pool)
 
-	seasonCastCache, err := store.NewSeasonCastBigCacheAdapter(ctx)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create season cast BigCache")
-	}
-	seasonCastStore := store.NewSeasonCastPostgresStore(pool)
-	seasonCastTiered := store.NewSeasonCastTieredCache(seasonCastCache, seasonCastStore)
-
-	// Initialize TMDB client and resolver
+	// Initialize TMDB client and the catalog it feeds
 	tmdbClient := tmdb.NewClient(tmdb.Config{
 		BaseURL:     cfg.TmdbBaseUrl,
 		Timeout:     cfg.TmdbTimeout,
 		AccessToken: cfg.TmdbAccessToken,
 		RateLimit:   cfg.TmdbRateLimit,
 	})
-	tmdbResolver := tmdb.NewMetadataResolver(tmdbClient)
-
-	seriesService, err := series.New(ctx, seriesMetadataStore, tmdbClient)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create series cache service")
-	}
-
-	// Initialize data enrichments
-	ageResolver, err := age.New(ctx, personStore, tmdbClient, age.Config{
+	var bg background.Group
+	svc := catalog.New(catalog.Deps{
+		Pool:               pool,
+		Movies:             store.NewMovieStore(pool),
+		Series:             store.NewSeriesStore(pool),
+		Seasons:            store.NewSeasonStore(pool),
+		Episodes:           store.NewEpisodeStore(pool),
+		People:             personStore,
+		Collections:        store.NewCollectionStore(pool),
+		TMDB:               tmdbClient,
+		BG:                 &bg,
 		MaxFetchPerRequest: cfg.MaxTmdbFetchPerRequest,
 	})
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to create age resolver")
-	}
+	svc.Start()
 
 	// Initialize interesting info enrichment
-	interestingInfoStore := store.NewInterestingInfoStore(pool)
-
 	var augurResolver *augur.Resolver
 	if cfg.AnthropicApiKey != "" {
-		augurResolver = augur.New(interestingInfoStore, augur.Config{
+		augurResolver = augur.New(personStore, augur.Config{
 			ApiKey:        cfg.AnthropicApiKey,
 			Model:         cfg.AugurModel,
 			MaxTokens:     cfg.AugurMaxTokens,
@@ -150,24 +142,21 @@ func main() {
 	// Initialize API server
 	httputil.DefaultCacheMaxAge = cfg.CacheMaxAge
 	h := handlers.NewHandlers(handlers.HandlerDeps{
-		Cfg:                 cfg,
-		TmdbClient:          tmdbClient,
-		TmdbResolver:        tmdbResolver,
-		AgeResolver:         ageResolver,
-		SeasonCastCache:     seasonCastTiered,
-		SeriesService:       seriesService,
-		AugurResolver:       augurResolver,
-		Providers:           oidcProviders,
-		UserStore:           userStore,
-		SessionStore:        sessionStore,
-		AuthCodeStore:       authCodeStore,
-		NotificationStore:   notificationStore,
-		WatchlistStore:      watchlistStore,
-		WatchEventStore:     watchEventStore,
-		AchievementStore:    achievementStore,
-		StatsStore:          statsStore,
-		SeriesMetadataStore: seriesMetadataStore,
-		AchievementWorker:   achievementWorker,
+		Cfg:               cfg,
+		TmdbClient:        tmdbClient,
+		Catalog:           svc,
+		BG:                &bg,
+		AugurResolver:     augurResolver,
+		Providers:         oidcProviders,
+		UserStore:         userStore,
+		SessionStore:      sessionStore,
+		AuthCodeStore:     authCodeStore,
+		NotificationStore: notificationStore,
+		WatchlistStore:    watchlistStore,
+		WatchEventStore:   watchEventStore,
+		AchievementStore:  achievementStore,
+		StatsStore:        statsStore,
+		AchievementWorker: achievementWorker,
 	})
 
 	r := api.NewRouter(h, cfg, sessionStore)

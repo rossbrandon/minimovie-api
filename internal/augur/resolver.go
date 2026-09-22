@@ -60,7 +60,7 @@ func (r *Resolver) readCache(ctx context.Context, personID int) (*cachedResult, 
 	readCtx, cancel := context.WithTimeout(ctx, augurCacheReadTimeout)
 	defer cancel()
 
-	data, _, err := r.store.Get(readCtx, "person", personID)
+	data, _, err := r.store.GetInsights(readCtx, personID)
 	if err != nil || data == nil {
 		if metrics.M != nil {
 			metrics.M.RecordCacheMiss(ctx, "interesting_info")
@@ -159,18 +159,18 @@ func (r *Resolver) fetchAndCache(ctx context.Context, personID int, name string)
 		return cached, nil
 	}
 
-	r.persistCacheAsync(ctx, personID, name, jsonData)
+	r.persistCacheAsync(ctx, personID, jsonData)
 
 	return cached, nil
 }
 
-func (r *Resolver) persistCacheAsync(ctx context.Context, personID int, name string, data json.RawMessage) {
+func (r *Resolver) persistCacheAsync(ctx context.Context, personID int, data json.RawMessage) {
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), augurCacheWriteTimeout)
 		defer cancel()
 
 		start := time.Now()
-		err := r.store.Set(bgCtx, "person", personID, name, data)
+		err := r.store.SetInsights(bgCtx, personID, data)
 		duration := time.Since(start)
 		outcome := "success"
 		if err != nil {
