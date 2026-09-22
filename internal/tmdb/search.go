@@ -44,6 +44,7 @@ type SearchResult struct {
 	Overview    string    `json:"overview"`
 	PosterPath  string    `json:"poster_path"`
 	ProfilePath string    `json:"profile_path"`
+	Popularity  float64   `json:"popularity"`
 	SearchResultMovie
 	SearchResultShow
 	SearchResultPerson

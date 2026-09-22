@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -17,29 +19,32 @@ func TestWatchlistStore_Create(t *testing.T) {
 	s := NewWatchlistStore(testPool)
 
 	runtime := 120
-	vote := float32(8.5)
-	year := 2024
-	poster := "/poster.jpg"
-	meta := ResolvedMedia{
+	vote := 8.5
+	release := time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
+	movieID := insertTestMovie(t, Movie{
+		SourceID:       100,
 		Title:          "Test Movie",
-		PosterPath:     &poster,
+		PosterPath:     strp("/poster.jpg"),
 		Genres:         []string{"Action", "Adventure"},
 		RuntimeMinutes: &runtime,
 		VoteAverage:    &vote,
-		ReleaseYear:    &year,
-	}
+		ReleaseDate:    &release,
+	})
 
-	item, err := s.Create(ctx, uuid.New().String(), userID, "movie", 100, "want_to_watch", meta)
+	item, err := s.Create(ctx, uuid.New().String(), userID, "movie", movieID, "want_to_watch", "Test Movie")
 	require.NoError(t, err)
 	assert.NotEmpty(t, item.ID)
 	assert.Equal(t, "movie", item.MediaType)
-	assert.Equal(t, 100, item.MediaID)
+	assert.Equal(t, movieID, item.MediaID)
 	assert.Equal(t, "Test Movie", item.MediaTitle)
 	assert.Equal(t, "want_to_watch", item.Status)
 	assert.Equal(t, 0, item.WatchCount)
+	assert.Equal(t, "/poster.jpg", *item.PosterPath, "title details come from the catalog row")
 	assert.Equal(t, []string{"Action", "Adventure"}, item.Genres)
 	require.NotNil(t, item.RuntimeMinutes)
 	assert.Equal(t, 120, *item.RuntimeMinutes)
+	assert.InDelta(t, 8.5, *item.VoteAverage, 0.01)
+	assert.Equal(t, 2024, *item.ReleaseYear)
 }
 
 func TestWatchlistStore_List(t *testing.T) {
@@ -48,9 +53,9 @@ func TestWatchlistStore_List(t *testing.T) {
 	userID := createTestUser(t)
 	s := NewWatchlistStore(testPool)
 
-	_, err := s.Create(ctx, uuid.New().String(), userID, "movie", 1, "want_to_watch", ResolvedMedia{Title: "Movie 1", Genres: []string{}})
+	_, err := s.Create(ctx, uuid.New().String(), userID, "movie", 1, "want_to_watch", "Movie 1")
 	require.NoError(t, err)
-	_, err = s.Create(ctx, uuid.New().String(), userID, "series", 2, "watched", ResolvedMedia{Title: "Series 1", Genres: []string{}})
+	_, err = s.Create(ctx, uuid.New().String(), userID, "series", 2, "watched", "Series 1")
 	require.NoError(t, err)
 
 	all, err := s.List(ctx, userID, nil, nil)
@@ -76,7 +81,7 @@ func TestWatchlistStore_Check(t *testing.T) {
 	userID := createTestUser(t)
 	s := NewWatchlistStore(testPool)
 
-	_, err := s.Create(ctx, uuid.New().String(), userID, "movie", 42, "want_to_watch", ResolvedMedia{Title: "Exists", Genres: []string{}})
+	_, err := s.Create(ctx, uuid.New().String(), userID, "movie", 42, "want_to_watch", "Exists")
 	require.NoError(t, err)
 
 	found, err := s.Check(ctx, userID, "movie", 42)
@@ -95,7 +100,7 @@ func TestWatchlistStore_UpdateStatus(t *testing.T) {
 	userID := createTestUser(t)
 	s := NewWatchlistStore(testPool)
 
-	item, err := s.Create(ctx, uuid.New().String(), userID, "movie", 50, "want_to_watch", ResolvedMedia{Title: "Status Test", Genres: []string{}})
+	item, err := s.Create(ctx, uuid.New().String(), userID, "movie", 50, "want_to_watch", "Status Test")
 	require.NoError(t, err)
 
 	updated, err := s.UpdateStatus(ctx, item.ID, userID, "watched")
@@ -111,7 +116,7 @@ func TestWatchlistStore_UpdateSummary(t *testing.T) {
 	ws := NewWatchlistStore(testPool)
 	es := NewWatchEventStore(testPool)
 
-	_, err := ws.Create(ctx, uuid.New().String(), userID, "movie", 200, "want_to_watch", ResolvedMedia{Title: "Summary Movie", Genres: []string{}})
+	_, err := ws.Create(ctx, uuid.New().String(), userID, "movie", 200, "want_to_watch", "Summary Movie")
 	require.NoError(t, err)
 
 	_, err = es.Create(ctx, WatchEventCreate{
@@ -140,7 +145,7 @@ func TestWatchlistStore_Delete(t *testing.T) {
 	otherUserID := createOtherUser(t)
 	s := NewWatchlistStore(testPool)
 
-	item, err := s.Create(ctx, uuid.New().String(), userID, "movie", 60, "want_to_watch", ResolvedMedia{Title: "Delete Me", Genres: []string{}})
+	item, err := s.Create(ctx, uuid.New().String(), userID, "movie", 60, "want_to_watch", "Delete Me")
 	require.NoError(t, err)
 
 	err = s.Delete(ctx, item.ID, userID)
@@ -156,10 +161,10 @@ func TestWatchlistStore_UniqueConstraint(t *testing.T) {
 	userID := createTestUser(t)
 	s := NewWatchlistStore(testPool)
 
-	_, err := s.Create(ctx, uuid.New().String(), userID, "movie", 77, "want_to_watch", ResolvedMedia{Title: "Unique", Genres: []string{}})
+	_, err := s.Create(ctx, uuid.New().String(), userID, "movie", 77, "want_to_watch", "Unique")
 	require.NoError(t, err)
 
-	_, err = s.Create(ctx, uuid.New().String(), userID, "movie", 77, "watching", ResolvedMedia{Title: "Unique Dup", Genres: []string{}})
+	_, err = s.Create(ctx, uuid.New().String(), userID, "movie", 77, "watching", "Unique Dup")
 	assert.Error(t, err)
 }
 
@@ -175,17 +180,9 @@ func TestWatchlistStore_UpdateSummary_SeriesAggregation(t *testing.T) {
 	userID := createTestUser(t)
 	wl := NewWatchlistStore(testPool)
 	we := NewWatchEventStore(testPool)
-	sm := NewSeriesMetadataStore(testPool)
 
-	seriesID := 5000
-	require.NoError(t, sm.Upsert(ctx, &SeriesMetadata{
-		SeriesID:            seriesID,
-		Name:                "Show",
-		TotalEpisodes:       30,
-		TotalSeasons:        3,
-		SeasonEpisodeCounts: map[int]int{1: 10, 2: 10, 3: 10},
-	}))
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Show", Genres: []string{}})
+	seriesID := insertTestSeries(t, testSeries(5000, "Show", false, 10, 10, 10))
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", "Show")
 	require.NoError(t, err)
 
 	// Season 1 marked — one complete season.
@@ -226,17 +223,9 @@ func TestWatchlistStore_UpdateSummary_AllEpisodesMakeSeasonComplete(t *testing.T
 	userID := createTestUser(t)
 	wl := NewWatchlistStore(testPool)
 	we := NewWatchEventStore(testPool)
-	sm := NewSeriesMetadataStore(testPool)
 
-	seriesID := 5100
-	require.NoError(t, sm.Upsert(ctx, &SeriesMetadata{
-		SeriesID:            seriesID,
-		Name:                "Mini",
-		TotalEpisodes:       3,
-		TotalSeasons:        1,
-		SeasonEpisodeCounts: map[int]int{1: 3},
-	}))
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Mini", Genres: []string{}})
+	seriesID := insertTestSeries(t, testSeries(5100, "Mini", false, 3))
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", "Mini")
 	require.NoError(t, err)
 
 	seasonOne := 1
@@ -260,7 +249,7 @@ func TestWatchlistStore_UpdateSummary_AllEpisodesMakeSeasonComplete(t *testing.T
 	assert.Equal(t, 1, items[0].SeasonsWatched, "3/3 episode marks completes the season")
 }
 
-// Without cached series_metadata, episode marks can't complete a season —
+// Without a hydrated series row, episode marks can't complete a season —
 // we don't know the totals. Season marks still count.
 func TestWatchlistStore_UpdateSummary_NoMetadataCannotCompleteViaEpisodes(t *testing.T) {
 	truncateAll(t)
@@ -270,7 +259,7 @@ func TestWatchlistStore_UpdateSummary_NoMetadataCannotCompleteViaEpisodes(t *tes
 	we := NewWatchEventStore(testPool)
 
 	seriesID := 5200
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Cold", Genres: []string{}})
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", "Cold")
 	require.NoError(t, err)
 
 	seasonOne := 1
@@ -291,7 +280,7 @@ func TestWatchlistStore_UpdateSummary_NoMetadataCannotCompleteViaEpisodes(t *tes
 	require.NoError(t, err)
 	require.Len(t, items, 1)
 	assert.Equal(t, 5, items[0].EpisodesWatched)
-	assert.Equal(t, 0, items[0].SeasonsWatched, "no cached season totals → can't complete via episode marks")
+	assert.Equal(t, 0, items[0].SeasonsWatched, "no season totals → can't complete via episode marks")
 }
 
 // Full unwatch reverts status to 'want_to_watch'. Without this branch a series
@@ -304,7 +293,7 @@ func TestWatchlistStore_UpdateSummary_StatusRevertsOnFullUnwatch(t *testing.T) {
 	we := NewWatchEventStore(testPool)
 
 	seriesID := 5500
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Show2", Genres: []string{}})
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", "Show2")
 	require.NoError(t, err)
 
 	season := 1
@@ -320,7 +309,7 @@ func TestWatchlistStore_UpdateSummary_StatusRevertsOnFullUnwatch(t *testing.T) {
 	items, err := wl.List(ctx, userID, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	assert.Equal(t, "in_progress", items[0].Status, "no series_metadata → in_progress for safety")
+	assert.Equal(t, "in_progress", items[0].Status, "no series row → in_progress for safety")
 
 	require.NoError(t, we.Delete(ctx, ev.ID, userID))
 	require.NoError(t, wl.UpdateSummary(ctx, userID, "series", seriesID))
@@ -344,10 +333,10 @@ func TestWatchlistStore_List_SortsByMostRecentInteraction(t *testing.T) {
 	we := NewWatchEventStore(testPool)
 
 	// Item A: created earliest.
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 11, "want_to_watch", ResolvedMedia{Title: "Old", Genres: []string{}})
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 11, "want_to_watch", "Old")
 	require.NoError(t, err)
 	// Item B: created later, still want_to_watch.
-	_, err = wl.Create(ctx, uuid.New().String(), userID, "movie", 22, "want_to_watch", ResolvedMedia{Title: "Newer", Genres: []string{}})
+	_, err = wl.Create(ctx, uuid.New().String(), userID, "movie", 22, "want_to_watch", "Newer")
 	require.NoError(t, err)
 
 	// Mark item A as watched — its last_watched_at advances past item B's added_at.
@@ -365,7 +354,7 @@ func TestWatchlistStore_List_SortsByMostRecentInteraction(t *testing.T) {
 	assert.Equal(t, 22, items[1].MediaID)
 }
 
-// JOIN to series_metadata: series rows without a cached entry get NULL
+// JOIN to series: a series whose row is still a skeleton gets NULL
 // totals (not an error). The frontend treats null totals as "no progress
 // badge yet", which is the correct degraded state.
 func TestWatchlistStore_List_JoinNullForUncachedSeries(t *testing.T) {
@@ -373,19 +362,23 @@ func TestWatchlistStore_List_JoinNullForUncachedSeries(t *testing.T) {
 	ctx := context.Background()
 	userID := createTestUser(t)
 	wl := NewWatchlistStore(testPool)
+	series := NewSeriesStore(testPool)
 
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", 6000, "want_to_watch", ResolvedMedia{Title: "Uncached", Genres: []string{}})
+	require.NoError(t, series.UpsertSkeleton(ctx, testPool, []Skeleton{{SourceID: 6000, Title: "Uncached"}}))
+	skeleton, err := series.GetBySourceID(ctx, 6000)
+	require.NoError(t, err)
+	_, err = wl.Create(ctx, uuid.New().String(), userID, "series", skeleton.ID, "want_to_watch", "Uncached")
 	require.NoError(t, err)
 
 	items, err := wl.List(ctx, userID, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	assert.Nil(t, items[0].TotalEpisodes, "no series_metadata row → null totals, no error")
+	assert.Nil(t, items[0].TotalEpisodes, "skeleton series row → null totals, no error")
 	assert.Nil(t, items[0].TotalSeasons)
 
-	// Add the metadata; List now picks it up.
-	sm := NewSeriesMetadataStore(testPool)
-	require.NoError(t, sm.Upsert(ctx, &SeriesMetadata{SeriesID: 6000, TotalEpisodes: 30, TotalSeasons: 3}))
+	// Hydrate the series; List now picks it up.
+	seriesID := insertTestSeries(t, testSeries(6000, "Uncached", false, 10, 10, 10))
+	require.Equal(t, skeleton.ID, seriesID)
 
 	items, err = wl.List(ctx, userID, nil, nil)
 	require.NoError(t, err)
@@ -396,8 +389,8 @@ func TestWatchlistStore_List_JoinNullForUncachedSeries(t *testing.T) {
 	assert.Equal(t, 3, *items[0].TotalSeasons)
 
 	// Movie rows leave the JOIN columns NULL even when a series row of the
-	// same id exists in series_metadata.
-	_, err = wl.Create(ctx, uuid.New().String(), userID, "movie", 6000, "want_to_watch", ResolvedMedia{Title: "Movie", Genres: []string{}})
+	// same id exists.
+	_, err = wl.Create(ctx, uuid.New().String(), userID, "movie", seriesID, "want_to_watch", "Movie")
 	require.NoError(t, err)
 
 	items, err = wl.List(ctx, userID, nil, nil)
@@ -405,7 +398,7 @@ func TestWatchlistStore_List_JoinNullForUncachedSeries(t *testing.T) {
 	require.Len(t, items, 2)
 	for _, item := range items {
 		if item.MediaType == "movie" {
-			assert.Nil(t, item.TotalEpisodes, "movies never JOIN to series_metadata")
+			assert.Nil(t, item.TotalEpisodes, "movies never JOIN to series")
 		}
 	}
 }
@@ -418,18 +411,9 @@ func TestWatchlistStore_UpdateSummary_CaughtUpOnAiringSeriesStaysInProgress(t *t
 	userID := createTestUser(t)
 	wl := NewWatchlistStore(testPool)
 	we := NewWatchEventStore(testPool)
-	sm := NewSeriesMetadataStore(testPool)
 
-	seriesID := 5300
-	require.NoError(t, sm.Upsert(ctx, &SeriesMetadata{
-		SeriesID:            seriesID,
-		Name:                "Airing",
-		TotalEpisodes:       5,
-		TotalSeasons:        1,
-		SeasonEpisodeCounts: map[int]int{1: 5},
-		InProduction:        true,
-	}))
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Airing", Genres: []string{}})
+	seriesID := insertTestSeries(t, testSeries(5300, "Airing", true, 5))
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", "Airing")
 	require.NoError(t, err)
 
 	season := 1
@@ -457,18 +441,9 @@ func TestWatchlistStore_UpdateSummary_FinishedSeriesWatchedSetsDates(t *testing.
 	userID := createTestUser(t)
 	wl := NewWatchlistStore(testPool)
 	we := NewWatchEventStore(testPool)
-	sm := NewSeriesMetadataStore(testPool)
 
-	seriesID := 5400
-	require.NoError(t, sm.Upsert(ctx, &SeriesMetadata{
-		SeriesID:            seriesID,
-		Name:                "Done",
-		TotalEpisodes:       3,
-		TotalSeasons:        1,
-		SeasonEpisodeCounts: map[int]int{1: 3},
-		InProduction:        false,
-	}))
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", ResolvedMedia{Title: "Done", Genres: []string{}})
+	seriesID := insertTestSeries(t, testSeries(5400, "Done", false, 3))
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "series", seriesID, "want_to_watch", "Done")
 	require.NoError(t, err)
 
 	season := 1
@@ -498,7 +473,7 @@ func TestWatchlistStore_UpdateSummary_MovieSetsAndClearsDates(t *testing.T) {
 	wl := NewWatchlistStore(testPool)
 	we := NewWatchEventStore(testPool)
 
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 300, "want_to_watch", ResolvedMedia{Title: "Flick", Genres: []string{}})
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 300, "want_to_watch", "Flick")
 	require.NoError(t, err)
 
 	ev, err := we.Create(ctx, WatchEventCreate{
@@ -535,7 +510,7 @@ func TestWatchlistStore_UpdateStatus_HandMarkedWatchedSetsDates(t *testing.T) {
 	userID := createTestUser(t)
 	wl := NewWatchlistStore(testPool)
 
-	item, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 400, "want_to_watch", ResolvedMedia{Title: "Hand", Genres: []string{}})
+	item, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 400, "want_to_watch", "Hand")
 	require.NoError(t, err)
 	assert.Nil(t, item.StartedAt)
 	assert.Nil(t, item.FinishedAt)
@@ -560,4 +535,24 @@ func createOtherUser(t *testing.T) string {
 	result, err := s.UpsertFromOAuth(context.Background(), "google", "other-provider-id-"+t.Name(), "", nil, nil)
 	require.NoError(t, err)
 	return result.User.ID
+}
+
+// testSeries is a hydrated series whose totals and per-season counts come from episodeCounts.
+func testSeries(sourceID int, name string, inProduction bool, episodeCounts ...int) Series {
+	seasons := make([]map[string]int, 0, len(episodeCounts))
+	total := 0
+	for i, n := range episodeCounts {
+		seasons = append(seasons, map[string]int{"season_number": i + 1, "episode_count": n})
+		total += n
+	}
+	payload, _ := json.Marshal(map[string]any{"id": sourceID, "seasons": seasons})
+	count := len(episodeCounts)
+	return Series{
+		SourceID:      sourceID,
+		Name:          name,
+		InProduction:  &inProduction,
+		TotalSeasons:  &count,
+		TotalEpisodes: &total,
+		Payload:       payload,
+	}
 }

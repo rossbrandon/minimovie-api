@@ -76,6 +76,20 @@ func (s *SeasonStore) ListBySeries(ctx context.Context, seriesID int) ([]Season,
 	return seasons, nil
 }
 
+func (s *SeasonStore) IDsBySeries(ctx context.Context, seriesID int) (map[int]int, error) {
+	defer metrics.TrackDbDuration(ctx, "read")()
+
+	rows, err := s.pool.Query(ctx, `select season_number, id from seasons where series_id = $1`, seriesID)
+	if err != nil {
+		return nil, fmt.Errorf("season store: ids by series: %w", err)
+	}
+	ids, err := collectIDMap(rows)
+	if err != nil {
+		return nil, fmt.Errorf("season store: ids by series: %w", err)
+	}
+	return ids, nil
+}
+
 func (s *SeasonStore) UpsertSkeletons(ctx context.Context, db DBTX, seriesID int, rows []SeasonSkeleton) error {
 	if len(rows) == 0 {
 		return nil
@@ -169,7 +183,8 @@ func (s *SeasonStore) MarkStaleBySeries(ctx context.Context, seriesIDs []int) (i
 	}
 	defer metrics.TrackDbDuration(ctx, "write")()
 
-	tag, err := s.pool.Exec(ctx, `update seasons set stale = true, updated_at = now() where series_id = any($1) and not stale`, seriesIDs)
+	tag, err := s.pool.Exec(ctx, `update seasons set stale = true, updated_at = now()
+		where series_id = any($1) and payload is not null and not stale`, seriesIDs)
 	if err != nil {
 		return 0, fmt.Errorf("season store: mark stale: %w", err)
 	}

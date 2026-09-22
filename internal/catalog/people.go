@@ -3,9 +3,10 @@ package catalog
 import (
 	"context"
 	"errors"
+	"maps"
 	"sort"
 	"strconv"
-	"sync/atomic"
+	"sync"
 
 	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
@@ -21,6 +22,30 @@ const (
 	PriorityCrew     = 5
 	topCastSize      = 10
 )
+
+const (
+	peopleFetcherQueue   = 1024
+	peopleFetcherWorkers = 4
+)
+
+// Start runs the people fetcher, which hydrates the credited people,
+func (s *Service) Start() {
+	ctx, cancel := context.WithCancel(context.Background())
+	s.stopFetch = cancel
+	s.fetchQueue = make(chan int, peopleFetcherQueue)
+	for range peopleFetcherWorkers {
+		s.fetchWG.Go(func() { s.fetchWorker(ctx) })
+	}
+}
+
+// Stop ends the workers and waits for in-flight fetches.
+func (s *Service) Stop() {
+	if s.stopFetch == nil {
+		return
+	}
+	s.stopFetch()
+	s.fetchWG.Wait()
+}
 
 type PersonRef struct {
 	SourceID           int
@@ -85,6 +110,33 @@ func personRefsFromAggregateCredits(c tmdb.AggregateCredits) []PersonRef {
 	return refs
 }
 
+// personRefsFromSeries credits the aggregate cast and crew plus the creators.
+func personRefsFromSeries(sr *tmdb.Series) []PersonRef {
+	refs := personRefsFromAggregateCredits(sr.AggregateCredits)
+	for _, c := range sr.CreatedBy {
+		refs = append(refs, PersonRef{
+			SourceID:    c.ID,
+			Name:        c.Name,
+			ProfilePath: c.ProfilePath,
+			Priority:    PriorityCrew,
+		})
+	}
+	return refs
+}
+
+func personRefsFromSeason(sd *tmdb.SeasonDetails) []PersonRef {
+	refs := personRefsFromAggregateCredits(sd.AggregateCredits)
+	for _, ep := range sd.Episodes {
+		refs = append(refs, personRefsFromCast(ep.GuestStars, PriorityCast)...)
+	}
+	return refs
+}
+
+func personRefsFromEpisode(ep *tmdb.EpisodeDetails) []PersonRef {
+	refs := personRefsFromCredits(tmdb.Credits{Cast: ep.Credits.Cast, Crew: ep.Credits.Crew})
+	return append(refs, personRefsFromCast(ep.Credits.GuestStars, PriorityCast)...)
+}
+
 func personRefsFromCast(cast []tmdb.CastMember, priority int) []PersonRef {
 	refs := make([]PersonRef, 0, len(cast))
 	for _, m := range cast {
@@ -133,8 +185,32 @@ func (s *Service) seedPeople(ctx context.Context, db store.DBTX, refs []PersonRe
 	return s.people.UpsertSkeleton(ctx, db, rows)
 }
 
-// fetchPriorityPeople hydrates up to limit of the people that have no hydrated row yet.
-func (s *Service) fetchPriorityPeople(ctx context.Context, refs []PersonRef, limit int) (int, error) {
+// peopleDates maps credited people to their rows and dates. Gaps among the director, writers, and
+// top cast are fetched now, up to the request cap; every other gap goes to the fetcher.
+func (s *Service) peopleDates(ctx context.Context, refs []PersonRef) (PeopleDates, error) {
+	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), missTimeout)
+	defer cancel()
+	known, _, err := s.fetchPriorityPeople(dctx, refs, s.maxFetchPerRequest)
+	if err != nil {
+		return nil, err
+	}
+	var gaps []int
+	for _, r := range uniqueRefs(refs) {
+		if !known[r.SourceID].Fetched {
+			gaps = append(gaps, r.SourceID)
+		}
+	}
+	s.enqueuePeople(gaps)
+	return known, nil
+}
+
+// fetchPriorityPeople hydrates up to limit of the director, writers, and top cast that have no
+// hydrated row yet. It returns what is known about every ref afterwards and how many were fetched.
+func (s *Service) fetchPriorityPeople(
+	ctx context.Context,
+	refs []PersonRef,
+	limit int,
+) (map[int]store.PersonDates, int, error) {
 	refs = uniqueRefs(refs)
 	sourceIDs := make([]int, 0, len(refs))
 	for _, r := range refs {
@@ -142,7 +218,7 @@ func (s *Service) fetchPriorityPeople(ctx context.Context, refs []PersonRef, lim
 	}
 	known, err := s.people.GetDates(ctx, sourceIDs)
 	if err != nil {
-		return 0, err
+		return nil, 0, err
 	}
 
 	var missing []PersonRef
@@ -156,15 +232,31 @@ func (s *Service) fetchPriorityPeople(ctx context.Context, refs []PersonRef, lim
 		missing = missing[:limit]
 	}
 
-	var fetched atomic.Int32
+	fetched := s.fetchPeople(ctx, missing)
+	if len(fetched) > 0 {
+		fresh, err := s.people.GetDates(ctx, fetched)
+		if err != nil {
+			return nil, 0, err
+		}
+		maps.Copy(known, fresh)
+	}
+	return known, len(fetched), ctx.Err()
+}
+
+// fetchPeople fetches refs side by side and returns the source ids that were stored.
+func (s *Service) fetchPeople(ctx context.Context, refs []PersonRef) []int {
+	var mu sync.Mutex
+	fetched := make([]int, 0, len(refs))
 	var g errgroup.Group
 	g.SetLimit(personFetchConcurrency)
-	for _, ref := range missing {
+	for _, ref := range refs {
 		g.Go(func() error {
 			_, err := s.fetchPerson(ctx, s.pool, ref.SourceID)
 			switch {
 			case err == nil:
-				fetched.Add(1)
+				mu.Lock()
+				fetched = append(fetched, ref.SourceID)
+				mu.Unlock()
 			case !errors.Is(err, tmdb.ErrNotFound):
 				log.Warn().Err(err).Int("person_source_id", ref.SourceID).Msg("catalog: person fetch failed")
 			}
@@ -172,7 +264,42 @@ func (s *Service) fetchPriorityPeople(ctx context.Context, refs []PersonRef, lim
 		})
 	}
 	_ = g.Wait()
-	return int(fetched.Load()), ctx.Err()
+	return fetched
+}
+
+// enqueuePeople hands source ids to the fetcher without blocking; a full queue drops them.
+func (s *Service) enqueuePeople(sourceIDs []int) {
+	for _, id := range sourceIDs {
+		select {
+		case s.fetchQueue <- id:
+		default:
+			log.Debug().Int("person_source_id", id).Msg("catalog: person fetch dropped")
+		}
+	}
+}
+
+func (s *Service) fetchWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case id := <-s.fetchQueue:
+			s.fetchQueued(id)
+		}
+	}
+}
+
+// fetchQueued hydrates one queued person unless a request already did.
+func (s *Service) fetchQueued(sourceID int) {
+	ctx, cancel := context.WithTimeout(context.Background(), missTimeout)
+	defer cancel()
+	known, err := s.people.GetDates(ctx, []int{sourceID})
+	if err == nil && known[sourceID].Fetched {
+		return
+	}
+	if _, err := s.fetchPerson(ctx, s.pool, sourceID); err != nil && !errors.Is(err, tmdb.ErrNotFound) {
+		log.Warn().Err(err).Int("person_source_id", sourceID).Msg("catalog: queued person fetch failed")
+	}
 }
 
 // uniqueRefs drops repeated and id-less credits, keeping the first occurrence's priority.

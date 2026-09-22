@@ -19,6 +19,7 @@ const personColumns = `id, source_id, slug, name, date_of_birth, date_of_death, 
 	also_known_as, popularity, payload, insights, insights_at, stale, fetched_at, created_at, updated_at`
 
 type PersonDates struct {
+	ID          int
 	DateOfBirth string
 	DateOfDeath string
 	Popularity  float64
@@ -70,7 +71,7 @@ func (s *PersonStore) GetDates(ctx context.Context, sourceIDs []int) (map[int]Pe
 	defer metrics.TrackDbDuration(ctx, "read")()
 
 	rows, err := s.pool.Query(ctx, `
-		select source_id, date_of_birth, date_of_death, popularity, payload is not null
+		select id, source_id, date_of_birth, date_of_death, popularity, payload is not null
 		from people where source_id = any($1)`, sourceIDs)
 	if err != nil {
 		return nil, fmt.Errorf("person store: get dates: %w", err)
@@ -81,7 +82,7 @@ func (s *PersonStore) GetDates(ctx context.Context, sourceIDs []int) (map[int]Pe
 		var sourceID int
 		var dob, dod pgtype.Date
 		var d PersonDates
-		if err := rows.Scan(&sourceID, &dob, &dod, &d.Popularity, &d.Fetched); err != nil {
+		if err := rows.Scan(&d.ID, &sourceID, &dob, &dod, &d.Popularity, &d.Fetched); err != nil {
 			return nil, fmt.Errorf("person store: get dates: %w", err)
 		}
 		if dob.Valid {
@@ -165,7 +166,8 @@ func (s *PersonStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Person
 		select u.source_id, u.name, u.profile, u.department, u.popularity, now()
 		from unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::real[]) as u(source_id, name, profile, department, popularity)
 		on conflict (source_id) do update set
-			popularity           = case when people.payload is null then excluded.popularity else people.popularity end,
+			popularity           = case when people.payload is null and excluded.popularity > 0
+			                       then excluded.popularity else people.popularity end,
 			name                 = case when people.payload is null then excluded.name else people.name end,
 			profile_path         = case when people.payload is null then coalesce(excluded.profile_path, people.profile_path) else people.profile_path end,
 			known_for_department = case when people.payload is null then coalesce(excluded.known_for_department, people.known_for_department) else people.known_for_department end,

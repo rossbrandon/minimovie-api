@@ -108,7 +108,8 @@ func (s *SeriesStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Skelet
 		from unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::text[], $6::real[], $7::real[])
 			as u(source_id, name, overview, poster, first_air_date, vote, popularity)
 		on conflict (source_id) do update set
-			popularity     = case when series.payload is null then excluded.popularity else series.popularity end,
+			popularity     = case when series.payload is null and excluded.popularity > 0
+			                 then excluded.popularity else series.popularity end,
 			name           = case when series.payload is null then excluded.name else series.name end,
 			overview       = case when series.payload is null then coalesce(excluded.overview, series.overview) else series.overview end,
 			poster_path    = case when series.payload is null then coalesce(excluded.poster_path, series.poster_path) else series.poster_path end,

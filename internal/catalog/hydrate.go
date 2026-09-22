@@ -262,7 +262,8 @@ func (s *Service) afterCommit(ctx context.Context, w writes) (int, error) {
 	if len(w.refs) == 0 {
 		return 0, nil
 	}
-	return s.fetchPriorityPeople(ctx, w.refs, s.peoplePerHydration)
+	_, fetched, err := s.fetchPriorityPeople(ctx, w.refs, s.peoplePerHydration)
+	return fetched, err
 }
 
 // prefetch runs the network half of every claimed row concurrently. Writes stay sequential inside

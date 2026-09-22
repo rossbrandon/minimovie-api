@@ -6,36 +6,50 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rossbrandon/minimovie-api/internal/metrics"
 )
 
+const watchlistSelect = `
+	select w.id, w.media_type, w.media_id,
+	       coalesce(m.title, s.name, w.media_title) as media_title,
+	       coalesce(m.poster_path, s.poster_path) as poster_path,
+	       w.status, w.started_at, w.finished_at, w.last_watched_at,
+	       w.watch_count, w.episodes_watched, w.seasons_watched,
+	       coalesce(m.genres, s.genres, '{}') as genres,
+	       coalesce(m.runtime_minutes, s.episode_run_time) as runtime_minutes,
+	       coalesce(m.vote_average, s.vote_average) as vote_average,
+	       extract(year from coalesce(m.release_date, s.first_air_date))::int as release_year,
+	       w.added_at, w.updated_at,
+	       s.total_episodes, s.total_seasons, s.in_production, s.next_air_date::text as next_air_date
+	from watchlist_item w
+	left join movies m on w.media_type = 'movie' and m.id = w.media_id
+	left join series s on w.media_type = 'series' and s.id = w.media_id`
+
 type WatchlistItem struct {
-	ID                  string     `json:"id"`
-	UserID              string     `json:"-"`
-	MediaType           string     `json:"mediaType"`
-	MediaID             int        `json:"mediaId"`
-	MediaTitle          string     `json:"mediaTitle"`
-	PosterPath          *string    `json:"posterPath"`
-	Status              string     `json:"status"`
-	StartedAt           *time.Time `json:"startedAt,omitempty"`
-	FinishedAt          *time.Time `json:"finishedAt,omitempty"`
-	LastWatchedAt       *time.Time `json:"lastWatchedAt,omitempty"`
-	WatchCount          int        `json:"watchCount"`
-	EpisodesWatched     int        `json:"episodesWatched"`
-	SeasonsWatched      int        `json:"seasonsWatched"`
-	Genres              []string   `json:"genres"`
-	RuntimeMinutes      *int       `json:"runtimeMinutes,omitempty"`
-	VoteAverage         *float32   `json:"voteAverage,omitempty"`
-	ReleaseYear         *int       `json:"releaseYear,omitempty"`
-	MetadataRefreshedAt time.Time  `json:"-"`
-	AddedAt             time.Time  `json:"addedAt"`
-	UpdatedAt           time.Time  `json:"updatedAt"`
-	TotalEpisodes       *int       `json:"totalEpisodes,omitempty"`
-	TotalSeasons        *int       `json:"totalSeasons,omitempty"`
-	InProduction        *bool      `json:"inProduction,omitempty"`
-	NextAirDate         *string    `json:"nextAirDate,omitempty"`
+	ID              string     `json:"id" db:"id"`
+	UserID          string     `json:"-" db:"-"`
+	MediaType       string     `json:"mediaType" db:"media_type"`
+	MediaID         int        `json:"mediaId" db:"media_id"`
+	MediaTitle      string     `json:"mediaTitle" db:"media_title"`
+	PosterPath      *string    `json:"posterPath" db:"poster_path"`
+	Status          string     `json:"status" db:"status"`
+	StartedAt       *time.Time `json:"startedAt,omitempty" db:"started_at"`
+	FinishedAt      *time.Time `json:"finishedAt,omitempty" db:"finished_at"`
+	LastWatchedAt   *time.Time `json:"lastWatchedAt,omitempty" db:"last_watched_at"`
+	WatchCount      int        `json:"watchCount" db:"watch_count"`
+	EpisodesWatched int        `json:"episodesWatched" db:"episodes_watched"`
+	SeasonsWatched  int        `json:"seasonsWatched" db:"seasons_watched"`
+	Genres          []string   `json:"genres" db:"genres"`
+	RuntimeMinutes  *int       `json:"runtimeMinutes,omitempty" db:"runtime_minutes"`
+	VoteAverage     *float32   `json:"voteAverage,omitempty" db:"vote_average"`
+	ReleaseYear     *int       `json:"releaseYear,omitempty" db:"release_year"`
+	AddedAt         time.Time  `json:"addedAt" db:"added_at"`
+	UpdatedAt       time.Time  `json:"updatedAt" db:"updated_at"`
+	TotalEpisodes   *int       `json:"totalEpisodes,omitempty" db:"total_episodes"`
+	TotalSeasons    *int       `json:"totalSeasons,omitempty" db:"total_seasons"`
+	InProduction    *bool      `json:"inProduction,omitempty" db:"in_production"`
+	NextAirDate     *string    `json:"nextAirDate,omitempty" db:"next_air_date"`
 }
 
 type ResolvedMedia struct {
@@ -54,7 +68,12 @@ type ResolvedMedia struct {
 type WatchlistRepository interface {
 	List(ctx context.Context, userID string, status, mediaType *string) ([]WatchlistItem, error)
 	Check(ctx context.Context, userID, mediaType string, mediaID int) (*WatchlistItem, error)
-	Create(ctx context.Context, id, userId, mediaType string, mediaID int, status string, meta ResolvedMedia) (*WatchlistItem, error)
+	Create(
+		ctx context.Context,
+		id, userID, mediaType string,
+		mediaID int,
+		status, mediaTitle string,
+	) (*WatchlistItem, error)
 	UpdateStatus(ctx context.Context, id, userID, status string) (*WatchlistItem, error)
 	UpdateSummary(ctx context.Context, userID, mediaType string, mediaID int) error
 	Delete(ctx context.Context, id, userID string) error
@@ -70,17 +89,8 @@ func NewWatchlistStore(pool *pgxpool.Pool) *WatchlistStore {
 
 func (s *WatchlistStore) List(ctx context.Context, userId string, status, mediaType *string) ([]WatchlistItem, error) {
 	defer metrics.TrackDbDuration(ctx, "watchlist.list")()
-	// LEFT JOIN to series_metadata leaves movie rows with NULL totals.
 	// Sort puts the most recent interaction first; id breaks timestamp ties.
-	query := `select w.id, w.media_type, w.media_id, w.media_title, w.poster_path, w.status,
-	                 w.started_at, w.finished_at, w.last_watched_at, w.watch_count,
-	                 w.episodes_watched, w.seasons_watched,
-	                 w.genres, w.runtime_minutes, w.vote_average, w.release_year,
-	                 w.added_at, w.updated_at,
-	                 sm.total_episodes, sm.total_seasons, sm.in_production, sm.next_air_date
-	          from watchlist_item w
-	          left join series_metadata sm on sm.series_id = w.media_id and w.media_type = 'series'
-	          where w.user_id = $1`
+	query := watchlistSelect + ` where w.user_id = $1`
 	args := []any{userId}
 
 	if status != nil {
@@ -97,38 +107,7 @@ func (s *WatchlistStore) List(ctx context.Context, userId string, status, mediaT
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	var items []WatchlistItem
-	for rows.Next() {
-		var item WatchlistItem
-		var totalEp, totalSeason *int
-		var inProd *bool
-		var nextAir pgtype.Date
-		if err := rows.Scan(
-			&item.ID, &item.MediaType, &item.MediaID, &item.MediaTitle,
-			&item.PosterPath, &item.Status, &item.StartedAt, &item.FinishedAt,
-			&item.LastWatchedAt, &item.WatchCount,
-			&item.EpisodesWatched, &item.SeasonsWatched,
-			&item.Genres, &item.RuntimeMinutes, &item.VoteAverage, &item.ReleaseYear,
-			&item.AddedAt, &item.UpdatedAt,
-			&totalEp, &totalSeason, &inProd, &nextAir,
-		); err != nil {
-			return nil, err
-		}
-		item.TotalEpisodes = totalEp
-		item.TotalSeasons = totalSeason
-		item.InProduction = inProd
-		if nextAir.Valid {
-			formatted := nextAir.Time.Format(time.DateOnly)
-			item.NextAirDate = &formatted
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	return pgx.CollectRows(rows, pgx.RowToStructByName[WatchlistItem])
 }
 
 func (s *WatchlistStore) Check(ctx context.Context, userId, mediaType string, mediaId int) (*WatchlistItem, error) {
@@ -145,29 +124,20 @@ func (s *WatchlistStore) Check(ctx context.Context, userId, mediaType string, me
 	return &item, nil
 }
 
-func (s *WatchlistStore) Create(ctx context.Context, id, userId, mediaType string, mediaId int, status string, meta ResolvedMedia) (*WatchlistItem, error) {
+func (s *WatchlistStore) Create(
+	ctx context.Context,
+	id, userID, mediaType string,
+	mediaID int,
+	status, mediaTitle string,
+) (*WatchlistItem, error) {
 	defer metrics.TrackDbDuration(ctx, "watchlist.create")()
-	query := `
-		insert into watchlist_item (id, user_id, media_type, media_id, media_title, poster_path, status,
-		                            genres, runtime_minutes, vote_average, release_year)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		returning id, media_type, media_id, media_title, poster_path, status,
-		          watch_count, genres, runtime_minutes, vote_average, release_year, added_at, updated_at
-	`
-	var item WatchlistItem
-	err := s.pool.QueryRow(ctx, query,
-		id, userId, mediaType, mediaId, meta.Title, meta.PosterPath, status,
-		meta.Genres, meta.RuntimeMinutes, meta.VoteAverage, meta.ReleaseYear,
-	).Scan(
-		&item.ID, &item.MediaType, &item.MediaID, &item.MediaTitle,
-		&item.PosterPath, &item.Status, &item.WatchCount,
-		&item.Genres, &item.RuntimeMinutes, &item.VoteAverage, &item.ReleaseYear,
-		&item.AddedAt, &item.UpdatedAt,
-	)
+	_, err := s.pool.Exec(ctx, `
+		insert into watchlist_item (id, user_id, media_type, media_id, media_title, status)
+		values ($1, $2, $3, $4, $5, $6)`, id, userID, mediaType, mediaID, mediaTitle, status)
 	if err != nil {
 		return nil, err
 	}
-	return &item, nil
+	return s.getByID(ctx, id, userID)
 }
 
 func (s *WatchlistStore) UpdateStatus(ctx context.Context, id, userId, status string) (*WatchlistItem, error) {
@@ -179,25 +149,15 @@ func (s *WatchlistStore) UpdateStatus(ctx context.Context, id, userId, status st
 			finished_at = case when $1 = 'watched' then coalesce(finished_at, now()) else null end,
 			updated_at = now()
 		where id = $2 and user_id = $3
-		returning id, media_type, media_id, media_title, poster_path, status,
-		          started_at, finished_at, last_watched_at, watch_count,
-		          genres, runtime_minutes, vote_average, release_year, added_at, updated_at
 	`
-	var item WatchlistItem
-	err := s.pool.QueryRow(ctx, query, status, id, userId).Scan(
-		&item.ID, &item.MediaType, &item.MediaID, &item.MediaTitle,
-		&item.PosterPath, &item.Status,
-		&item.StartedAt, &item.FinishedAt, &item.LastWatchedAt, &item.WatchCount,
-		&item.Genres, &item.RuntimeMinutes, &item.VoteAverage, &item.ReleaseYear,
-		&item.AddedAt, &item.UpdatedAt,
-	)
-	if err == pgx.ErrNoRows {
-		return nil, nil
-	}
+	tag, err := s.pool.Exec(ctx, query, status, id, userId)
 	if err != nil {
 		return nil, err
 	}
-	return &item, nil
+	if tag.RowsAffected() == 0 {
+		return nil, nil
+	}
+	return s.getByID(ctx, id, userId)
 }
 
 // UpdateSummary recomputes denormalized progress fields from watch_event.
@@ -215,7 +175,7 @@ func (s *WatchlistStore) UpdateSummary(ctx context.Context, userId, mediaType st
 }
 
 // updateSeriesSummary recomputes denormalized progress fields from watch_event for series.
-// season_totals expands the series_metadata season_episode_counts jsonb into one row per season;
+// season_totals expands the seasons listed in the series payload into one row per season (specials excluded);
 // episode_counts counts the user's episode events per season;
 // complete_seasons is the count of seasons that are fully watched (season-mark or enough episode marks).
 func (s *WatchlistStore) updateSeriesSummary(ctx context.Context, userId string, seriesId int) error {
@@ -231,14 +191,13 @@ func (s *WatchlistStore) updateSeriesSummary(ctx context.Context, userId string,
 		),
 		metadata as (
 			select total_episodes, in_production
-			from series_metadata
-			where series_id = $2
+			from series
+			where id = $2
 		),
 		season_totals as (
-			select (kv.key)::int as season_number, (kv.value)::int as total
-			from series_metadata sm,
-			     jsonb_each_text(coalesce(sm.season_episode_counts, '{}'::jsonb)) as kv
-			where sm.series_id = $2
+			select (season->>'season_number')::int as season_number, (season->>'episode_count')::int as total
+			from series, jsonb_array_elements(coalesce(payload->'seasons', '[]'::jsonb)) as season
+			where id = $2 and (season->>'season_number')::int > 0
 		),
 		episode_counts as (
 			select season_number, count(*) as cnt
@@ -328,4 +287,12 @@ func (s *WatchlistStore) Delete(ctx context.Context, id, userId string) error {
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+func (s *WatchlistStore) getByID(ctx context.Context, id, userID string) (*WatchlistItem, error) {
+	rows, err := s.pool.Query(ctx, watchlistSelect+` where w.id = $1 and w.user_id = $2`, id, userID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectOneRow(rows, pgx.RowToAddrOfStructByName[WatchlistItem])
 }

@@ -169,23 +169,8 @@ func TestHydrate_SeriesWritesSkeletonSeasonsAndSeasonsWriteSkeletonEpisodes(t *t
 	truncateAll(t)
 	ctx := context.Background()
 	f := newFakeTMDB(t)
-	f.series[1396] = tmdb.Series{
-		ID: 1396, Name: "Breaking Bad", FirstAirDate: "2008-01-20", NumberOfSeasons: 2, NumberOfEpisodes: 20,
-		EpisodeRunTime: []int{47}, Popularity: 100,
-		Seasons: []tmdb.Season{{ID: 3572, SeasonNumber: 1, Name: "Season 1", EpisodeCount: 7}, {ID: 3573, SeasonNumber: 2, Name: "Season 2", EpisodeCount: 13}},
-		AggregateCredits: tmdb.AggregateCredits{
-			Cast: []tmdb.AggregateCastMember{{ID: 17419, Name: "Bryan Cranston", TotalEpisodeCount: 20}},
-			Crew: []tmdb.AggregateCrewMember{{ID: 66633, Name: "Vince Gilligan", Jobs: []tmdb.Job{{Job: tmdb.JobExecutiveProducer}}}},
-		},
-	}
-	f.seasons["1396/1"] = tmdb.SeasonDetails{
-		ID: 3572, SeasonNumber: 1, Name: "Season 1",
-		Episodes: []tmdb.Episode{
-			{ID: 62085, EpisodeNumber: 1, Name: "Pilot", Runtime: 58, GuestStars: []tmdb.CastMember{{ID: 1223, Name: "Guest Star"}}},
-			{ID: 62086, EpisodeNumber: 2, Name: "Cat's in the Bag...", Runtime: 48},
-		},
-		AggregateCredits: tmdb.AggregateCredits{Cast: []tmdb.AggregateCastMember{{ID: 17419, Name: "Bryan Cranston", TotalEpisodeCount: 7}}},
-	}
+	f.series[1396] = breakingBad()
+	f.seasons["1396/1"] = breakingBadSeasonOne()
 	f.people[17419] = person(17419, "Bryan Cranston", "1956-03-07")
 	f.people[66633] = person(66633, "Vince Gilligan", "1967-02-10")
 	svc := newTestService(t, f, 0)
@@ -211,10 +196,10 @@ func TestHydrate_SeriesWritesSkeletonSeasonsAndSeasonsWriteSkeletonEpisodes(t *t
 	assert.Equal(t, 3572, listed[0].SourceID)
 	assert.Nil(t, listed[0].Payload)
 
-	sd, refs, err := svc.fetchSeason(ctx, testPool, row, 1)
+	sd, err := svc.Season(ctx, row.ID, 1)
 	require.NoError(t, err)
 	assert.Equal(t, "Season 1", sd.Name)
-	assert.NotEmpty(t, refs)
+	require.NoError(t, svc.bg.Wait(ctx))
 
 	season, err := seasons.Get(ctx, row.ID, 1)
 	require.NoError(t, err)

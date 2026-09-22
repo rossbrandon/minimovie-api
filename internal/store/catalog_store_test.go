@@ -48,6 +48,13 @@ func TestMovieStore_UpsertHydratedAndGet(t *testing.T) {
 	require.NotNil(t, bySource)
 	assert.Equal(t, id, bySource.ID)
 
+	ids, err := s.IDsBySource(ctx, []int{550, 999})
+	require.NoError(t, err)
+	assert.Equal(t, map[int]int{550: id}, ids, "an id without a row is absent")
+	ids, err = s.IDsBySource(ctx, nil)
+	require.NoError(t, err)
+	assert.Empty(t, ids)
+
 	again, err := s.UpsertHydrated(ctx, testPool, testMovie(550, "Fight Club"))
 	require.NoError(t, err)
 	assert.Equal(t, id, again, "upserting the same source keeps the same row")
@@ -111,6 +118,10 @@ func TestMovieStore_UpsertSkeletonNeverClobbersHydratedRows(t *testing.T) {
 	row, _ = s.GetBySourceID(ctx, 10)
 	assert.Equal(t, "/p.jpg", *row.PosterPath, "a nil field never overwrites a stored value")
 
+	require.NoError(t, s.UpsertSkeleton(ctx, testPool, []Skeleton{{SourceID: 10, Title: "Part"}}))
+	row, _ = s.GetBySourceID(ctx, 10)
+	assert.Equal(t, 3.0, row.Popularity, "a list without popularity (collection parts) never zeroes an export value")
+
 	_, err := s.UpsertHydrated(ctx, testPool, testMovie(10, "Hydrated Title"))
 	require.NoError(t, err)
 	hydrated, _ := s.GetBySourceID(ctx, 10)
@@ -142,6 +153,7 @@ func TestPersonStore_GetDatesReportsHydration(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, dates[1].Fetched)
 	assert.True(t, dates[2].Fetched)
+	assert.Equal(t, id, dates[2].ID)
 	assert.Equal(t, "1963-12-18", dates[2].DateOfBirth)
 	assert.True(t, dates[3].Fetched, "a hydrated person with no birthday is not a gap")
 	assert.Empty(t, dates[3].DateOfBirth)
@@ -279,6 +291,9 @@ func TestSeasonStore_SkeletonsThenPayload(t *testing.T) {
 	require.Len(t, listed, 2)
 	assert.Nil(t, listed[0].Payload, "skeleton seasons have no payload yet")
 	assert.Equal(t, "Season 1", listed[0].Name)
+	ids, err := seasons.IDsBySeries(ctx, seriesID)
+	require.NoError(t, err)
+	assert.Equal(t, map[int]int{1: listed[0].ID, 2: listed[1].ID}, ids)
 
 	counts, err := seasons.PersonEpisodeCounts(ctx, seriesID, 17419)
 	require.NoError(t, err)
@@ -344,6 +359,11 @@ func TestEpisodeAndCollectionStores_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 62085, ep.SourceID)
 	assert.Nil(t, ep.Payload)
+	ep2, err := es.Get(ctx, 7, 1, 2)
+	require.NoError(t, err)
+	ids, err := es.IDsBySeason(ctx, 7, 1)
+	require.NoError(t, err)
+	assert.Equal(t, map[int]int{1: ep.ID, 2: ep2.ID}, ids)
 
 	id, err := es.Upsert(ctx, testPool, Episode{SeriesID: 7, SeasonNumber: 1, EpisodeNumber: 1, SourceID: 62085, Name: "Pilot", Payload: json.RawMessage(`{"name":"Pilot"}`)})
 	require.NoError(t, err)

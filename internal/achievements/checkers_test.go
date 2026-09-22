@@ -2,6 +2,7 @@ package achievements
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -76,6 +77,26 @@ func createTestUser(t *testing.T) string {
 	return result.User.ID
 }
 
+// insertMovie writes a hydrated movies row, which is where the watchlist reads a title's rating and
+// release year from, and returns its id.
+func insertMovie(t *testing.T, m store.Movie) int {
+	t.Helper()
+	m.Payload = json.RawMessage(`{}`)
+	id, err := store.NewMovieStore(testPool).UpsertHydrated(context.Background(), testPool, m)
+	require.NoError(t, err)
+	return id
+}
+
+func insertMovieFromYear(t *testing.T, sourceID, year int) int {
+	t.Helper()
+	release := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
+	return insertMovie(t, store.Movie{
+		SourceID:    sourceID,
+		Title:       fmt.Sprintf("Movie from %d", year),
+		ReleaseDate: &release,
+	})
+}
+
 func TestCheckCenturyClub(t *testing.T) {
 	truncateAll(t)
 	ctx := context.Background()
@@ -84,20 +105,14 @@ func TestCheckCenturyClub(t *testing.T) {
 	we := store.NewWatchEventStore(testPool)
 
 	for i := 1; i <= 99; i++ {
-		_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", i, "watched", store.ResolvedMedia{
-			Title:  fmt.Sprintf("Movie %d", i),
-			Genres: []string{},
-		})
+		_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", i, "watched", fmt.Sprintf("Movie %d", i))
 		require.NoError(t, err)
 	}
 
 	earned, _, _, _ := checkCenturyClub(ctx, userID, wl, we)
 	assert.False(t, earned, "99 movies should not earn century club")
 
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 100, "watched", store.ResolvedMedia{
-		Title:  "Movie 100",
-		Genres: []string{},
-	})
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 100, "watched", "Movie 100")
 	require.NoError(t, err)
 
 	earned, mediaType, _, _ := checkCenturyClub(ctx, userID, wl, we)
@@ -168,24 +183,26 @@ func TestCheckCriticsPick(t *testing.T) {
 	wl := store.NewWatchlistStore(testPool)
 	we := store.NewWatchEventStore(testPool)
 
-	vote := float32(8.5)
+	vote := 8.5
 	for i := 1; i <= 9; i++ {
-		_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", i, "watched", store.ResolvedMedia{
+		movieID := insertMovie(t, store.Movie{
+			SourceID:    i,
 			Title:       fmt.Sprintf("Great Movie %d", i),
-			Genres:      []string{},
 			VoteAverage: &vote,
 		})
+		_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", movieID, "watched", "")
 		require.NoError(t, err)
 	}
 
 	earned, _, _, _ := checkCriticsPick(ctx, userID, wl, we)
 	assert.False(t, earned, "9 high-rated movies should not earn critics pick")
 
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 10, "watched", store.ResolvedMedia{
+	movieID := insertMovie(t, store.Movie{
+		SourceID:    10,
 		Title:       "Great Movie 10",
-		Genres:      []string{},
 		VoteAverage: &vote,
 	})
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", movieID, "watched", "")
 	require.NoError(t, err)
 
 	earned, mediaType, _, _ := checkCriticsPick(ctx, userID, wl, we)
@@ -202,24 +219,14 @@ func TestCheckTimeTraveler(t *testing.T) {
 
 	decades := []int{1970, 1985, 1993, 2004}
 	for i, year := range decades {
-		y := year
-		_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", i+1, "watched", store.ResolvedMedia{
-			Title:       fmt.Sprintf("Movie from %d", year),
-			Genres:      []string{},
-			ReleaseYear: &y,
-		})
+		_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", insertMovieFromYear(t, i+1, year), "watched", "")
 		require.NoError(t, err)
 	}
 
 	earned, _, _, _ := checkTimeTraveler(ctx, userID, wl, we)
 	assert.False(t, earned, "4 decades should not earn time traveler")
 
-	fifthYear := 2015
-	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", 5, "watched", store.ResolvedMedia{
-		Title:       "Movie from 2015",
-		Genres:      []string{},
-		ReleaseYear: &fifthYear,
-	})
+	_, err := wl.Create(ctx, uuid.New().String(), userID, "movie", insertMovieFromYear(t, 5, 2015), "watched", "")
 	require.NoError(t, err)
 
 	earned, mediaType, _, _ := checkTimeTraveler(ctx, userID, wl, we)

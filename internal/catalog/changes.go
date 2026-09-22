@@ -3,6 +3,8 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 )
@@ -28,6 +30,20 @@ func (s *Service) SyncChanges(
 		return 0, 0, fmt.Errorf("catalog: %s changes: %w", entity, err)
 	}
 	marked, err = table.MarkStale(ctx, ids)
+	if err != nil || entity != EntitySeries {
+		return len(ids), marked, err
+	}
+	// A changed series may have changed its seasons and episodes too.
+	// Their documents are refreshed on the next request.
+	held, err := s.series.IDsBySource(ctx, ids)
+	if err != nil {
+		return len(ids), marked, err
+	}
+	seriesIDs := slices.Collect(maps.Values(held))
+	if _, err := s.seasons.MarkStaleBySeries(ctx, seriesIDs); err != nil {
+		return len(ids), marked, err
+	}
+	_, err = s.episodes.MarkStaleBySeries(ctx, seriesIDs)
 	return len(ids), marked, err
 }
 

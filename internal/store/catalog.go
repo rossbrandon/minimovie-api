@@ -86,6 +86,23 @@ func (t catalogTable) MarkStale(ctx context.Context, sourceIDs []int) (int64, er
 	return tag.RowsAffected(), nil
 }
 
+func (t catalogTable) IDsBySource(ctx context.Context, sourceIDs []int) (map[int]int, error) {
+	if len(sourceIDs) == 0 {
+		return map[int]int{}, nil
+	}
+	defer metrics.TrackDbDuration(ctx, "read")()
+
+	rows, err := t.pool.Query(ctx, `select source_id, id from `+t.name+` where source_id = any($1)`, sourceIDs)
+	if err != nil {
+		return nil, fmt.Errorf("%s store: ids by source: %w", t.name, err)
+	}
+	ids, err := collectIDMap(rows)
+	if err != nil {
+		return nil, fmt.Errorf("%s store: ids by source: %w", t.name, err)
+	}
+	return ids, nil
+}
+
 func (t catalogTable) DeleteBySourceID(ctx context.Context, db DBTX, sourceID int) error {
 	defer metrics.TrackDbDuration(ctx, "write")()
 
@@ -166,6 +183,16 @@ func purgeExpired(ctx context.Context, pool *pgxpool.Pool, table string) (int64,
 		metrics.M.RecordDbPurge(ctx, table, tag.RowsAffected())
 	}
 	return tag.RowsAffected(), nil
+}
+
+func collectIDMap(rows pgx.Rows) (map[int]int, error) {
+	ids := make(map[int]int)
+	var key, id int
+	_, err := pgx.ForEachRow(rows, []any{&key, &id}, func() error {
+		ids[key] = id
+		return nil
+	})
+	return ids, err
 }
 
 func nullTime(t *time.Time) *time.Time {

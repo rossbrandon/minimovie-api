@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rossbrandon/minimovie-api/internal/background"
 	"github.com/rossbrandon/minimovie-api/internal/store"
 	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"golang.org/x/sync/singleflight"
@@ -40,6 +42,8 @@ type Deps struct {
 	Collections        *store.CollectionStore
 	TMDB               tmdb.MediaClient
 	PeoplePerHydration int
+	MaxFetchPerRequest int
+	BG                 *background.Group
 }
 
 type Service struct {
@@ -53,12 +57,23 @@ type Service struct {
 	tmdb        tmdb.MediaClient
 
 	peoplePerHydration int
+	maxFetchPerRequest int
+	bg                 *background.Group
 	sf                 singleflight.Group
+	fetchQueue         chan int
+	fetchWG            sync.WaitGroup
+	stopFetch          context.CancelFunc
 }
 
 func New(d Deps) *Service {
 	if d.PeoplePerHydration <= 0 {
 		d.PeoplePerHydration = defaultPeoplePerHydration
+	}
+	if d.MaxFetchPerRequest <= 0 {
+		d.MaxFetchPerRequest = defaultPeoplePerHydration
+	}
+	if d.BG == nil {
+		d.BG = &background.Group{}
 	}
 	return &Service{
 		pool:               d.Pool,
@@ -70,6 +85,8 @@ func New(d Deps) *Service {
 		collections:        d.Collections,
 		tmdb:               d.TMDB,
 		peoplePerHydration: d.PeoplePerHydration,
+		maxFetchPerRequest: d.MaxFetchPerRequest,
+		bg:                 d.BG,
 	}
 }
 

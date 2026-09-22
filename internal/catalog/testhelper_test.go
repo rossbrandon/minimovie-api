@@ -66,27 +66,32 @@ func truncateAll(t *testing.T) {
 }
 
 type fakeTMDB struct {
-	mu      sync.Mutex
-	srv     *httptest.Server
-	movies  map[int]tmdb.Movie
-	series  map[int]tmdb.Series
-	seasons map[string]tmdb.SeasonDetails
-	people  map[int]tmdb.Person
-	changes map[string][]int
-	failing map[string]bool
-	calls   map[string]int
+	mu          sync.Mutex
+	srv         *httptest.Server
+	movies      map[int]tmdb.Movie
+	series      map[int]tmdb.Series
+	seasons     map[string]tmdb.SeasonDetails
+	episodes    map[string]tmdb.EpisodeDetails
+	people      map[int]tmdb.Person
+	collections map[int]tmdb.Collection
+	changes     map[string][]int
+	failing     map[string]bool
+	calls       map[string]int
+	hold        chan struct{} // when set, every response waits until it is closed
 }
 
 func newFakeTMDB(t *testing.T) *fakeTMDB {
 	t.Helper()
 	f := &fakeTMDB{
-		movies:  map[int]tmdb.Movie{},
-		series:  map[int]tmdb.Series{},
-		seasons: map[string]tmdb.SeasonDetails{},
-		people:  map[int]tmdb.Person{},
-		changes: map[string][]int{},
-		failing: map[string]bool{},
-		calls:   map[string]int{},
+		movies:      map[int]tmdb.Movie{},
+		series:      map[int]tmdb.Series{},
+		seasons:     map[string]tmdb.SeasonDetails{},
+		episodes:    map[string]tmdb.EpisodeDetails{},
+		people:      map[int]tmdb.Person{},
+		collections: map[int]tmdb.Collection{},
+		changes:     map[string][]int{},
+		failing:     map[string]bool{},
+		calls:       map[string]int{},
 	}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.srv.Close)
@@ -115,6 +120,9 @@ func (f *fakeTMDB) handle(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case parts[1] == "changes":
 		body, ok = changesBody(f.changes[entity]), true
+	case entity == "tv" && len(parts) == 6 && parts[4] == "episode":
+		f.calls["episode"]++
+		body, ok = f.episodes[parts[1]+"/"+parts[3]+"/"+parts[5]]
 	case entity == "tv" && len(parts) == 4 && parts[2] == "season":
 		f.calls["season"]++
 		body, ok = f.seasons[parts[1]+"/"+parts[3]]
@@ -124,8 +132,14 @@ func (f *fakeTMDB) handle(w http.ResponseWriter, r *http.Request) {
 		body, ok = f.series[id]
 	case entity == "person":
 		body, ok = f.people[id]
+	case entity == "collection":
+		body, ok = f.collections[id]
 	}
+	hold := f.hold
 	f.mu.Unlock()
+	if hold != nil {
+		<-hold
+	}
 
 	switch {
 	case failing:
@@ -152,9 +166,24 @@ func (f *fakeTMDB) count(entity string) int {
 	return f.calls[entity]
 }
 
-func newTestService(t *testing.T, f *fakeTMDB, peoplePerHydration int) *Service {
+// holdResponses blocks every response until the returned release is called.
+func (f *fakeTMDB) holdResponses() (release func()) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.hold = make(chan struct{})
+	return sync.OnceFunc(func() { close(f.hold) })
+}
+
+func (f *fakeTMDB) resetCounts() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = map[string]int{}
+}
+
+// newTestService caps both the hydrator's and a read's synchronous people fetch at peopleCap.
+func newTestService(t *testing.T, f *fakeTMDB, peopleCap int) *Service {
 	t.Helper()
-	return New(Deps{
+	svc := New(Deps{
 		Pool:               testPool,
 		Movies:             store.NewMovieStore(testPool),
 		Series:             store.NewSeriesStore(testPool),
@@ -163,8 +192,11 @@ func newTestService(t *testing.T, f *fakeTMDB, peoplePerHydration int) *Service 
 		People:             store.NewPersonStore(testPool),
 		Collections:        store.NewCollectionStore(testPool),
 		TMDB:               f.client(),
-		PeoplePerHydration: peoplePerHydration,
+		PeoplePerHydration: peopleCap,
+		MaxFetchPerRequest: peopleCap,
 	})
+	t.Cleanup(svc.Stop)
+	return svc
 }
 
 func fightClub() tmdb.Movie {
@@ -190,4 +222,45 @@ func fightClub() tmdb.Movie {
 
 func person(id int, name, birthday string) tmdb.Person {
 	return tmdb.Person{ID: id, Name: name, Birthday: birthday, Popularity: 10, KnownForDepartment: "Acting"}
+}
+
+func breakingBad() tmdb.Series {
+	return tmdb.Series{
+		ID: 1396, Name: "Breaking Bad", FirstAirDate: "2008-01-20", NumberOfSeasons: 2, NumberOfEpisodes: 20,
+		EpisodeRunTime: []int{47}, Popularity: 100, Genres: []tmdb.Genre{{ID: 18, Name: "Drama"}},
+		CreatedBy: []tmdb.Creator{{ID: 66633, Name: "Vince Gilligan"}},
+		Seasons: []tmdb.Season{
+			{ID: 3572, SeasonNumber: 1, Name: "Season 1", EpisodeCount: 7},
+			{ID: 3573, SeasonNumber: 2, Name: "Season 2", EpisodeCount: 13},
+		},
+		AggregateCredits: tmdb.AggregateCredits{
+			Cast: []tmdb.AggregateCastMember{{ID: 17419, Name: "Bryan Cranston", TotalEpisodeCount: 20}},
+			Crew: []tmdb.AggregateCrewMember{
+				{ID: 66633, Name: "Vince Gilligan", Jobs: []tmdb.Job{{Job: tmdb.JobExecutiveProducer}}},
+			},
+		},
+	}
+}
+
+func breakingBadSeasonOne() tmdb.SeasonDetails {
+	return tmdb.SeasonDetails{
+		ID: 3572, SeasonNumber: 1, Name: "Season 1",
+		Episodes: []tmdb.Episode{
+			{
+				ID: 62085, EpisodeNumber: 1, Name: "Pilot", Runtime: 58,
+				GuestStars: []tmdb.CastMember{{ID: 1223, Name: "Guest Star"}},
+			},
+			{ID: 62086, EpisodeNumber: 2, Name: "Cat's in the Bag...", Runtime: 48},
+		},
+		AggregateCredits: tmdb.AggregateCredits{
+			Cast: []tmdb.AggregateCastMember{{ID: 17419, Name: "Bryan Cranston", TotalEpisodeCount: 7}},
+		},
+	}
+}
+
+func breakingBadPilot() tmdb.EpisodeDetails {
+	return tmdb.EpisodeDetails{
+		ID: 62085, Name: "Pilot", SeasonNumber: 1, EpisodeNumber: 1, Runtime: 58,
+		Credits: tmdb.EpisodeCredits{GuestStars: []tmdb.CastMember{{ID: 1223, Name: "Guest Star"}}},
+	}
 }

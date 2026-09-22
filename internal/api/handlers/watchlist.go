@@ -83,7 +83,15 @@ func (h *Handlers) AddToWatchlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	item, err := h.watchlistStore.Create(r.Context(), uuid.New().String(), user.ID, req.MediaType, req.MediaID, req.Status, meta)
+	item, err := h.watchlistStore.Create(
+		r.Context(),
+		uuid.New().String(),
+		user.ID,
+		req.MediaType,
+		req.MediaID,
+		req.Status,
+		meta.Title,
+	)
 	if err != nil {
 		if isUniqueViolation(err) {
 			httputil.Error(w, http.StatusConflict, "item already in watchlist")

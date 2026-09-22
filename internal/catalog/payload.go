@@ -97,9 +97,6 @@ func episodeSkeletons(sd *tmdb.SeasonDetails) []store.EpisodeSkeleton {
 	return rows
 }
 
-// TODO(2a): used by fetchEpisode once the episode accessor exists.
-//
-//nolint:unused
 func episodeRow(seriesID int, ep *tmdb.EpisodeDetails) (store.Episode, error) {
 	payload, err := json.Marshal(ep)
 	if err != nil {
@@ -142,6 +139,84 @@ func collectionRow(c *tmdb.Collection) (store.Collection, error) {
 		return store.Collection{}, fmt.Errorf("catalog: marshal collection %d: %w", c.ID, err)
 	}
 	return store.Collection{SourceID: c.ID, Name: c.Name, Payload: payload}, nil
+}
+
+func partSkeletons(c *tmdb.Collection) []store.Skeleton {
+	rows := make([]store.Skeleton, 0, len(c.Parts))
+	for _, p := range c.Parts {
+		rows = append(rows, store.Skeleton{
+			SourceID:    p.ID,
+			Title:       p.Title,
+			Overview:    nilIfZero(p.Overview),
+			PosterPath:  nilIfZero(p.PosterPath),
+			ReleaseDate: nilIfZero(p.ReleaseDate),
+			VoteAverage: nilIfZero(p.VoteAverage),
+		})
+	}
+	return rows
+}
+
+func searchSkeletons(results *tmdb.SearchResults) (movies, series []store.Skeleton, people []store.PersonSkeleton) {
+	for _, r := range results.Results {
+		switch {
+		case r.ID == 0:
+		case r.MediaType == tmdb.MediaTypeMovie:
+			movies = append(movies, store.Skeleton{
+				SourceID:    r.ID,
+				Title:       r.Title,
+				Overview:    nilIfZero(r.Overview),
+				PosterPath:  nilIfZero(r.PosterPath),
+				ReleaseDate: nilIfZero(r.ReleaseDate),
+				Popularity:  r.Popularity,
+			})
+		case r.MediaType == tmdb.MediaTypeTV:
+			series = append(series, store.Skeleton{
+				SourceID:    r.ID,
+				Title:       r.Name,
+				Overview:    nilIfZero(r.Overview),
+				PosterPath:  nilIfZero(r.PosterPath),
+				ReleaseDate: nilIfZero(r.FirstAirDate),
+				Popularity:  r.Popularity,
+			})
+		case r.MediaType == tmdb.MediaTypePerson:
+			people = append(people, store.PersonSkeleton{
+				SourceID:           r.ID,
+				Name:               r.Name,
+				ProfilePath:        nilIfZero(r.ProfilePath),
+				KnownForDepartment: nilIfZero(r.KnownForDepartment),
+				Popularity:         r.Popularity,
+			})
+		}
+	}
+	return movies, series, people
+}
+
+func searchIDs(results *tmdb.SearchResults, mediaType tmdb.MediaType) []int {
+	ids := make([]int, 0, len(results.Results))
+	for _, r := range results.Results {
+		if r.MediaType == mediaType && r.ID != 0 {
+			ids = append(ids, r.ID)
+		}
+	}
+	return ids
+}
+
+func filmographyIDs(cc tmdb.CombinedCredits) (movies, series []int) {
+	add := func(base tmdb.CombinedCreditBase) {
+		switch base.MediaType {
+		case "movie":
+			movies = append(movies, base.ID)
+		case "tv":
+			series = append(series, base.ID)
+		}
+	}
+	for _, c := range cc.Cast {
+		add(c.CombinedCreditBase)
+	}
+	for _, c := range cc.Crew {
+		add(c.CombinedCreditBase)
+	}
+	return movies, series
 }
 
 func creditSkeletons(cc tmdb.CombinedCredits) (movies, series []store.Skeleton) {

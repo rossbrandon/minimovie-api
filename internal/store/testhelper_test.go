@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -70,4 +71,27 @@ func createTestUser(t *testing.T) string {
 	result, err := s.UpsertFromOAuth(context.Background(), "google", "test-provider-id-"+t.Name(), "", nil, nil)
 	require.NoError(t, err)
 	return result.User.ID
+}
+
+// insertTestMovie writes a hydrated movies row and returns its id. A caller sets only the fields it
+// asserts; a nil payload is replaced so the row counts as hydrated rather than as a skeleton.
+func insertTestMovie(t *testing.T, m Movie) int {
+	t.Helper()
+	if m.Payload == nil {
+		m.Payload = json.RawMessage(`{}`)
+	}
+	id, err := NewMovieStore(testPool).UpsertHydrated(context.Background(), testPool, m)
+	require.NoError(t, err)
+	return id
+}
+
+// insertTestSeries is insertTestMovie for series.
+func insertTestSeries(t *testing.T, s Series) int {
+	t.Helper()
+	if s.Payload == nil {
+		s.Payload = json.RawMessage(`{}`)
+	}
+	id, err := NewSeriesStore(testPool).UpsertHydrated(context.Background(), testPool, s)
+	require.NoError(t, err)
+	return id
 }

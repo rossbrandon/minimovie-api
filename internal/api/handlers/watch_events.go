@@ -199,7 +199,16 @@ func (h *Handlers) createWatchlistFromEvent(ctx context.Context, id, userId, eve
 			syncMeta = resolved
 		}
 	}
-	if _, err := h.watchlistStore.Create(ctx, id, userId, lookupType, lookupID, "watched", syncMeta); err != nil {
+	_, err := h.watchlistStore.Create(
+		ctx,
+		id,
+		userId,
+		lookupType,
+		lookupID,
+		"watched",
+		syncMeta.Title,
+	)
+	if err != nil {
 		log.Warn().Err(err).Str("mediaType", lookupType).Int("mediaId", lookupID).Msg("watchlist auto-add failed")
 	}
 }

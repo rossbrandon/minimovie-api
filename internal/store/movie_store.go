@@ -111,7 +111,8 @@ func (s *MovieStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Skeleto
 		from unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::text[], $6::real[], $7::real[])
 			as u(source_id, title, overview, poster, release_date, vote, popularity)
 		on conflict (source_id) do update set
-			popularity   = case when movies.payload is null then excluded.popularity else movies.popularity end,
+			popularity   = case when movies.payload is null and excluded.popularity > 0
+			               then excluded.popularity else movies.popularity end,
 			title        = case when movies.payload is null then excluded.title else movies.title end,
 			overview     = case when movies.payload is null then coalesce(excluded.overview, movies.overview) else movies.overview end,
 			poster_path  = case when movies.payload is null then coalesce(excluded.poster_path, movies.poster_path) else movies.poster_path end,
