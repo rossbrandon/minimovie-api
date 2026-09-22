@@ -40,9 +40,7 @@ func (s *NotificationSeenStore) DeleteExpired(ctx context.Context) (int64, error
 		return 0, err
 	}
 	count := tag.RowsAffected()
-	if metrics.M != nil {
-		metrics.M.RecordDbPurge(ctx, "provider_notifications_seen", count)
-	}
+	metrics.M.RecordDbPurge(ctx, "provider_notifications_seen", count)
 	return count, nil
 }
 

@@ -106,9 +106,7 @@ func (h *Handlers) AddToWatchlist(w http.ResponseWriter, r *http.Request) {
 		h.achievementWorker.Enqueue(user.ID)
 	}
 
-	if metrics.M != nil {
-		metrics.M.RecordWatchlistOperation(r.Context(), "add", req.MediaType)
-	}
+	metrics.M.RecordWatchlistOperation(r.Context(), "add", req.MediaType)
 
 	httputil.JSON(w, http.StatusCreated, item, 0)
 }
@@ -149,9 +147,7 @@ func (h *Handlers) UpdateWatchlistStatus(w http.ResponseWriter, r *http.Request)
 		h.achievementWorker.Enqueue(user.ID)
 	}
 
-	if metrics.M != nil {
-		metrics.M.RecordWatchlistOperation(r.Context(), "update_status", item.MediaType)
-	}
+	metrics.M.RecordWatchlistOperation(r.Context(), "update_status", item.MediaType)
 
 	httputil.JSON(w, http.StatusOK, item, 0)
 }
@@ -174,9 +170,7 @@ func (h *Handlers) RemoveFromWatchlist(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if metrics.M != nil {
-		metrics.M.RecordWatchlistOperation(r.Context(), "remove", "any")
-	}
+	metrics.M.RecordWatchlistOperation(r.Context(), "remove", "any")
 
 	w.WriteHeader(http.StatusNoContent)
 }

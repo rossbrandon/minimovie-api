@@ -1,11 +1,13 @@
 package config
 
 import (
+	"cmp"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 )
@@ -69,275 +71,110 @@ const defaultGoogleIssuerURL = "https://accounts.google.com"
 const defaultAppleIssuerURL = "https://appleid.apple.com"
 
 func Load() (*Config, error) {
-	tmdbAccessToken := os.Getenv("TMDB_ACCESS_TOKEN")
-	if tmdbAccessToken == "" {
-		return nil, errors.New("TMDB_ACCESS_TOKEN is not set")
+	var errs []error
+	cfg := &Config{
+		Port:                   cmp.Or(os.Getenv("PORT"), defaultPort),
+		Timeout:                env(&errs, "TIMEOUT", defaultTimeout, strconv.Atoi),
+		LogLevel:               cmp.Or(os.Getenv("LOG_LEVEL"), defaultLogLevel),
+		TmdbBaseUrl:            cmp.Or(os.Getenv("TMDB_BASE_URL"), defaultTmdbBaseUrl),
+		TmdbTimeout:            env(&errs, "TMDB_TIMEOUT", defaultTmdbTimeout, strconv.Atoi),
+		TmdbAccessToken:        required(&errs, "TMDB_ACCESS_TOKEN"),
+		TmdbRateLimit:          env(&errs, "TMDB_RATE_LIMIT", defaultTmdbRateLimit, parsePositiveFloat),
+		MiniMovieUiSecret:      os.Getenv("MINI_MOVIE_UI_SECRET"),
+		DatabaseURL:            required(&errs, "DATABASE_URL"),
+		MaxTmdbFetchPerRequest: env(&errs, "MAX_TMDB_FETCH_PER_REQUEST", defaultMaxTmdbFetchPerRequest, strconv.Atoi),
+		SyncHydrateBudget:      env(&errs, "SYNC_HYDRATE_BUDGET", defaultSyncHydrateBudget, strconv.Atoi),
+		DbMaxConns:             env(&errs, "DB_MAX_CONNS", defaultDbMaxConns, strconv.Atoi),
+		DbMinConns:             env(&errs, "DB_MIN_CONNS", defaultDbMinConns, strconv.Atoi),
+		OTelEnabled:            env(&errs, "OTEL_ENABLED", false, strconv.ParseBool),
+		CacheMaxAge:            env(&errs, "CACHE_MAX_AGE", defaultCacheMaxAge, strconv.Atoi),
+		AnthropicApiKey:        os.Getenv("ANTHROPIC_API_KEY"),
+		AugurModel:             cmp.Or(os.Getenv("AUGUR_MODEL"), defaultAugurModel),
+		AugurMaxTokens:         env(&errs, "AUGUR_MAX_TOKENS", defaultAugurMaxTokens, strconv.Atoi),
+		AugurMaxRetries:        env(&errs, "AUGUR_MAX_RETRIES", defaultAugurMaxRetries, strconv.Atoi),
+		AugurMinConfidence:     env(&errs, "AUGUR_MIN_CONFIDENCE", defaultAugurMinConfidence, parseFloat),
+		AugurTimeout:           env(&errs, "AUGUR_TIMEOUT", defaultAugurTimeout, strconv.Atoi),
+		IsProduction:           os.Getenv("ENV") == "production",
+		GoogleClientID:         os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:     os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleIssuerURL:        cmp.Or(os.Getenv("GOOGLE_ISSUER_URL"), defaultGoogleIssuerURL),
+		AppleClientID:          os.Getenv("APPLE_CLIENT_ID"),
+		AppleTeamID:            os.Getenv("APPLE_TEAM_ID"),
+		AppleKeyID:             os.Getenv("APPLE_KEY_ID"),
+		ApplePrivateKey:        env(&errs, "APPLE_PRIVATE_KEY", nil, base64.StdEncoding.DecodeString),
+		AppleIssuerURL:         cmp.Or(os.Getenv("APPLE_ISSUER_URL"), defaultAppleIssuerURL),
+		AuthBaseURL:            os.Getenv("AUTH_BASE_URL"),
+		AuthUIBaseURL:          os.Getenv("AUTH_UI_BASE_URL"),
+		SessionSecret:          env(&errs, "SESSION_SECRET", nil, base64.StdEncoding.DecodeString),
+		TokenEncryptionKey:     env(&errs, "TOKEN_ENCRYPTION_KEY", nil, base64.StdEncoding.DecodeString),
 	}
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		log.Warn().Msg("PORT is not set, using default port")
-		port = defaultPort
+	if err := errors.Join(errs...); err != nil {
+		return nil, err
 	}
-
-	logLevel := os.Getenv("LOG_LEVEL")
-	if logLevel == "" {
-		logLevel = defaultLogLevel
+	exporterSet := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != "" && os.Getenv("OTEL_EXPORTER_OTLP_HEADERS") != ""
+	if cfg.OTelEnabled && !exporterSet {
+		log.Warn().Msg("OTEL_ENABLED is true but the OTLP endpoint or headers are not set, disabling metrics")
+		cfg.OTelEnabled = false
 	}
+	if len(cfg.SessionSecret) >= 32 {
+		cfg.CookieHashKey = cfg.SessionSecret[:16]
+		cfg.CookieEncKey = cfg.SessionSecret[16:32]
+	}
+	return cfg, nil
+}
 
-	timeoutStr := os.Getenv("TIMEOUT")
-	timeout := defaultTimeout
-	if timeoutStr == "" {
-		log.Warn().Msg(fmt.Sprintf("TIMEOUT is not set, using default timeout of %d seconds", defaultTimeout))
-	} else {
-		timeoutInt, err := strconv.Atoi(timeoutStr)
-		if err != nil {
-			return nil, errors.New("TIMEOUT is not a valid integer")
+func (c *Config) ValidateAPI() error {
+	var errs []error
+	check := func(ok bool, msg string) {
+		if !ok {
+			errs = append(errs, errors.New(msg))
 		}
-		timeout = timeoutInt
 	}
-
-	tmdbBaseUrl := os.Getenv("TMDB_BASE_URL")
-	if tmdbBaseUrl == "" {
-		log.Warn().Msg(fmt.Sprintf("TMDB_BASE_URL is not set, using default base URL of %s", defaultTmdbBaseUrl))
-		tmdbBaseUrl = defaultTmdbBaseUrl
+	check(c.MiniMovieUiSecret != "", "MINI_MOVIE_UI_SECRET must be set")
+	check(len(c.SessionSecret) >= 32, "SESSION_SECRET must be set and at least 32 bytes")
+	check(len(c.TokenEncryptionKey) == 32, "TOKEN_ENCRYPTION_KEY must be set and exactly 32 bytes")
+	check(c.GoogleClientID != "" || c.AppleClientID != "",
+		"At least one OAuth provider (GOOGLE_CLIENT_ID or APPLE_CLIENT_ID) must be configured")
+	check(c.AuthBaseURL != "", "AUTH_BASE_URL must be set")
+	check(c.AuthUIBaseURL != "", "AUTH_UI_BASE_URL must be set")
+	if c.IsProduction {
+		check(strings.HasPrefix(c.AuthBaseURL, "https://"), "AUTH_BASE_URL must use HTTPS in production")
+		check(strings.HasPrefix(c.AuthUIBaseURL, "https://"), "AUTH_UI_BASE_URL must use HTTPS in production")
 	}
+	return errors.Join(errs...)
+}
 
-	tmdbTimeoutStr := os.Getenv("TMDB_TIMEOUT")
-	tmdbTimeout := defaultTmdbTimeout
-	if tmdbTimeoutStr == "" {
-		log.Warn().Msg(fmt.Sprintf("TMDB_TIMEOUT is not set, using default timeout of %d seconds", defaultTmdbTimeout))
-	} else {
-		tmdbTimeoutInt, err := strconv.Atoi(tmdbTimeoutStr)
-		if err != nil {
-			return nil, errors.New("TMDB_TIMEOUT is not a valid integer")
-		}
-		tmdbTimeout = tmdbTimeoutInt
+// env returns def when key is unset, otherwise parse's reading of it; a parse error is added to errs.
+func env[T any](errs *[]error, key string, def T, parse func(string) (T, error)) T {
+	s := os.Getenv(key)
+	if s == "" {
+		return def
 	}
-
-	tmdbRateLimitStr := os.Getenv("TMDB_RATE_LIMIT")
-	tmdbRateLimit := defaultTmdbRateLimit
-	if tmdbRateLimitStr != "" {
-		tmdbRateLimitFloat, err := strconv.ParseFloat(tmdbRateLimitStr, 64)
-		if err != nil || tmdbRateLimitFloat <= 0 {
-			return nil, errors.New("TMDB_RATE_LIMIT is not a positive number")
-		}
-		tmdbRateLimit = tmdbRateLimitFloat
+	v, err := parse(s)
+	if err != nil {
+		*errs = append(*errs, fmt.Errorf("%s: %w", key, err))
+		return def
 	}
+	return v
+}
 
-	miniMovieUiSecret := os.Getenv("MINI_MOVIE_UI_SECRET")
-
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		return nil, errors.New("DATABASE_URL is not set")
+// required is env for a key that has no default.
+func required(errs *[]error, key string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		*errs = append(*errs, errors.New(key+" is not set"))
 	}
+	return v
+}
 
-	maxTmdbFetchPerRequestStr := os.Getenv("MAX_TMDB_FETCH_PER_REQUEST")
-	maxTmdbFetchPerRequest := defaultMaxTmdbFetchPerRequest
-	if maxTmdbFetchPerRequestStr != "" {
-		maxTmdbFetchPerRequestInt, err := strconv.Atoi(maxTmdbFetchPerRequestStr)
-		if err != nil {
-			return nil, errors.New("MAX_TMDB_FETCH_PER_REQUEST is not a valid integer")
-		}
-		maxTmdbFetchPerRequest = maxTmdbFetchPerRequestInt
+func parseFloat(s string) (float64, error) {
+	return strconv.ParseFloat(s, 64)
+}
+
+func parsePositiveFloat(s string) (float64, error) {
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil || v <= 0 {
+		return 0, errors.New("not a positive number")
 	}
-
-	syncHydrateBudgetStr := os.Getenv("SYNC_HYDRATE_BUDGET")
-	syncHydrateBudget := defaultSyncHydrateBudget
-	if syncHydrateBudgetStr != "" {
-		syncHydrateBudgetInt, err := strconv.Atoi(syncHydrateBudgetStr)
-		if err != nil {
-			return nil, errors.New("SYNC_HYDRATE_BUDGET is not a valid integer")
-		}
-		syncHydrateBudget = syncHydrateBudgetInt
-	}
-
-	dbMaxConnsStr := os.Getenv("DB_MAX_CONNS")
-	dbMaxConns := defaultDbMaxConns
-	if dbMaxConnsStr != "" {
-		dbMaxConnsInt, err := strconv.Atoi(dbMaxConnsStr)
-		if err != nil {
-			return nil, errors.New("DB_MAX_CONNS is not a valid integer")
-		}
-		dbMaxConns = dbMaxConnsInt
-	}
-
-	dbMinConnsStr := os.Getenv("DB_MIN_CONNS")
-	dbMinConns := defaultDbMinConns
-	if dbMinConnsStr != "" {
-		dbMinConnsInt, err := strconv.Atoi(dbMinConnsStr)
-		if err != nil {
-			return nil, errors.New("DB_MIN_CONNS is not a valid integer")
-		}
-		dbMinConns = dbMinConnsInt
-	}
-
-	otelEnabled := os.Getenv("OTEL_ENABLED") == "true"
-	otelEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-	otelHeaders := os.Getenv("OTEL_EXPORTER_OTLP_HEADERS")
-
-	if otelEnabled && (otelEndpoint == "" || otelHeaders == "") {
-		log.Warn().Msg("OTEL_ENABLED is true but OTEL_EXPORTER_OTLP_ENDPOINT or OTEL_EXPORTER_OTLP_HEADERS is not set, disabling metrics")
-		otelEnabled = false
-	}
-
-	cacheMaxAgeStr := os.Getenv("CACHE_MAX_AGE")
-	cacheMaxAge := defaultCacheMaxAge
-	if cacheMaxAgeStr != "" {
-		cacheMaxAgeInt, err := strconv.Atoi(cacheMaxAgeStr)
-		if err != nil {
-			return nil, errors.New("CACHE_MAX_AGE is not a valid integer")
-		}
-		cacheMaxAge = cacheMaxAgeInt
-	}
-
-	anthropicApiKey := os.Getenv("ANTHROPIC_API_KEY")
-
-	augurModel := os.Getenv("AUGUR_MODEL")
-	if augurModel == "" {
-		augurModel = defaultAugurModel
-	}
-
-	augurMaxTokensStr := os.Getenv("AUGUR_MAX_TOKENS")
-	augurMaxTokens := defaultAugurMaxTokens
-	if augurMaxTokensStr != "" {
-		augurMaxTokensInt, err := strconv.Atoi(augurMaxTokensStr)
-		if err != nil {
-			return nil, errors.New("AUGUR_MAX_TOKENS is not a valid integer")
-		}
-		augurMaxTokens = augurMaxTokensInt
-	}
-
-	augurMaxRetriesStr := os.Getenv("AUGUR_MAX_RETRIES")
-	augurMaxRetries := defaultAugurMaxRetries
-	if augurMaxRetriesStr != "" {
-		augurMaxRetriesInt, err := strconv.Atoi(augurMaxRetriesStr)
-		if err != nil {
-			return nil, errors.New("AUGUR_MAX_RETRIES is not a valid integer")
-		}
-		augurMaxRetries = augurMaxRetriesInt
-	}
-
-	augurMinConfidenceStr := os.Getenv("AUGUR_MIN_CONFIDENCE")
-	augurMinConfidence := defaultAugurMinConfidence
-	if augurMinConfidenceStr != "" {
-		augurMinConfidenceFloat, err := strconv.ParseFloat(augurMinConfidenceStr, 64)
-		if err != nil {
-			return nil, errors.New("AUGUR_MIN_CONFIDENCE is not a valid float")
-		}
-		augurMinConfidence = augurMinConfidenceFloat
-	}
-
-	augurTimeoutStr := os.Getenv("AUGUR_TIMEOUT")
-	augurTimeout := defaultAugurTimeout
-	if augurTimeoutStr != "" {
-		augurTimeoutInt, err := strconv.Atoi(augurTimeoutStr)
-		if err != nil {
-			return nil, errors.New("AUGUR_TIMEOUT is not a valid integer")
-		}
-		augurTimeout = augurTimeoutInt
-	}
-
-	isProduction := os.Getenv("ENV") == "production"
-
-	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
-	googleClientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
-
-	googleIssuerURL := os.Getenv("GOOGLE_ISSUER_URL")
-	if googleIssuerURL == "" {
-		googleIssuerURL = defaultGoogleIssuerURL
-	}
-
-	appleClientID := os.Getenv("APPLE_CLIENT_ID")
-	appleTeamID := os.Getenv("APPLE_TEAM_ID")
-	appleKeyID := os.Getenv("APPLE_KEY_ID")
-
-	appleIssuerURL := os.Getenv("APPLE_ISSUER_URL")
-	if appleIssuerURL == "" {
-		appleIssuerURL = defaultAppleIssuerURL
-	}
-
-	var applePrivateKey []byte
-	applePrivateKeyB64 := os.Getenv("APPLE_PRIVATE_KEY")
-	if applePrivateKeyB64 != "" {
-		decoded, err := base64.StdEncoding.DecodeString(applePrivateKeyB64)
-		if err != nil {
-			return nil, errors.New("APPLE_PRIVATE_KEY is not valid base64")
-		}
-		applePrivateKey = decoded
-	}
-
-	authBaseURL := os.Getenv("AUTH_BASE_URL")
-	authUIBaseURL := os.Getenv("AUTH_UI_BASE_URL")
-
-	var sessionSecret []byte
-	sessionSecretB64 := os.Getenv("SESSION_SECRET")
-	if sessionSecretB64 != "" {
-		decoded, err := base64.StdEncoding.DecodeString(sessionSecretB64)
-		if err != nil {
-			return nil, errors.New("SESSION_SECRET is not valid base64")
-		}
-		if len(decoded) < 32 {
-			return nil, errors.New("SESSION_SECRET must be at least 32 bytes")
-		}
-		sessionSecret = decoded
-	}
-
-	var cookieHashKey, cookieEncKey []byte
-	if len(sessionSecret) >= 32 {
-		cookieHashKey = sessionSecret[:16]
-		cookieEncKey = sessionSecret[16:32]
-	}
-
-	var tokenEncryptionKey []byte
-	tokenEncryptionKeyB64 := os.Getenv("TOKEN_ENCRYPTION_KEY")
-	if tokenEncryptionKeyB64 != "" {
-		decoded, err := base64.StdEncoding.DecodeString(tokenEncryptionKeyB64)
-		if err != nil {
-			return nil, errors.New("TOKEN_ENCRYPTION_KEY is not valid base64")
-		}
-		if len(decoded) != 32 {
-			return nil, errors.New("TOKEN_ENCRYPTION_KEY must be exactly 32 bytes")
-		}
-		tokenEncryptionKey = decoded
-	}
-
-	return &Config{
-		Port:                   port,
-		Timeout:                timeout,
-		LogLevel:               logLevel,
-		TmdbBaseUrl:            tmdbBaseUrl,
-		TmdbTimeout:            tmdbTimeout,
-		TmdbAccessToken:        tmdbAccessToken,
-		TmdbRateLimit:          tmdbRateLimit,
-		MiniMovieUiSecret:      miniMovieUiSecret,
-		DatabaseURL:            databaseURL,
-		MaxTmdbFetchPerRequest: maxTmdbFetchPerRequest,
-		SyncHydrateBudget:      syncHydrateBudget,
-		DbMaxConns:             dbMaxConns,
-		DbMinConns:             dbMinConns,
-		OTelEnabled:            otelEnabled,
-		CacheMaxAge:            cacheMaxAge,
-		AnthropicApiKey:        anthropicApiKey,
-		AugurModel:             augurModel,
-		AugurMaxTokens:         augurMaxTokens,
-		AugurMaxRetries:        augurMaxRetries,
-		AugurMinConfidence:     augurMinConfidence,
-		AugurTimeout:           augurTimeout,
-		IsProduction:           isProduction,
-		GoogleClientID:         googleClientID,
-		GoogleClientSecret:     googleClientSecret,
-		GoogleIssuerURL:        googleIssuerURL,
-		AppleClientID:          appleClientID,
-		AppleTeamID:            appleTeamID,
-		AppleKeyID:             appleKeyID,
-		ApplePrivateKey:        applePrivateKey,
-		AppleIssuerURL:         appleIssuerURL,
-		AuthBaseURL:            authBaseURL,
-		AuthUIBaseURL:          authUIBaseURL,
-		SessionSecret:          sessionSecret,
-		CookieHashKey:          cookieHashKey,
-		CookieEncKey:           cookieEncKey,
-		TokenEncryptionKey:     tokenEncryptionKey,
-	}, nil
+	return v, nil
 }

@@ -185,9 +185,7 @@ func purgeExpired(ctx context.Context, pool *pgxpool.Pool, table string) (int64,
 	if err != nil {
 		return 0, fmt.Errorf("%s store: delete expired: %w", table, err)
 	}
-	if metrics.M != nil {
-		metrics.M.RecordDbPurge(ctx, table, tag.RowsAffected())
-	}
+	metrics.M.RecordDbPurge(ctx, table, tag.RowsAffected())
 	return tag.RowsAffected(), nil
 }
 

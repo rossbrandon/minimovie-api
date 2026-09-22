@@ -23,11 +23,6 @@ func (rw *responseWriter) WriteHeader(code int) {
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if M == nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-
 		start := time.Now()
 		wrapped := newResponseWriter(w)
 		next.ServeHTTP(wrapped, r)

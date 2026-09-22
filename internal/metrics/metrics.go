@@ -15,7 +15,7 @@ import (
 
 const meterName = "minimovie-api"
 
-var M *Metrics
+var M = initNoopMetrics()
 
 type Metrics struct {
 	HttpRequestsTotal   metric.Int64Counter
@@ -44,8 +44,6 @@ type Metrics struct {
 	SingleflightTotal     metric.Int64Counter
 	BgPersistDuration     metric.Float64Histogram
 	BgPersistOutcomeTotal metric.Int64Counter
-	PeopleUpsertBatchSize metric.Int64Histogram
-	AgeResolveFanout      metric.Int64Histogram
 
 	DbPoolAcquiredConns        metric.Int64ObservableGauge
 	DbPoolIdleConns            metric.Int64ObservableGauge
@@ -61,7 +59,6 @@ type Config struct {
 func Init(ctx context.Context, cfg Config) (func(context.Context) error, error) {
 	if !cfg.Enabled {
 		log.Info().Msg("Metrics disabled, using noop provider")
-		M = initNoopMetrics()
 		return func(context.Context) error { return nil }, nil
 	}
 
@@ -270,24 +267,6 @@ func initMetrics(meter metric.Meter) (*Metrics, error) {
 		return nil, err
 	}
 
-	m.PeopleUpsertBatchSize, err = meter.Int64Histogram("people_upsert_batch_size",
-		metric.WithDescription("Number of rows per UpsertPersonBatch call"),
-		metric.WithUnit("{row}"),
-		metric.WithExplicitBucketBoundaries(1, 2, 5, 10, 25, 50, 100, 250, 500),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	m.AgeResolveFanout, err = meter.Int64Histogram("age_resolve_people_count",
-		metric.WithDescription("Number of people the age resolver was asked to resolve per request"),
-		metric.WithUnit("{person}"),
-		metric.WithExplicitBucketBoundaries(1, 2, 5, 10, 20, 50, 100),
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	m.DbPoolAcquiredConns, err = meter.Int64ObservableGauge("db_pool_acquired_conns",
 		metric.WithDescription("Number of pgxpool connections currently acquired"),
 		metric.WithUnit("{connection}"),
@@ -332,9 +311,7 @@ func initMetrics(meter metric.Meter) (*Metrics, error) {
 }
 
 func initNoopMetrics() *Metrics {
-	provider := otel.GetMeterProvider()
-	meter := provider.Meter(meterName)
-	m, _ := initMetrics(meter)
+	m, _ := initMetrics(otel.GetMeterProvider().Meter(meterName))
 	return m
 }
 
@@ -383,10 +360,6 @@ func (m *Metrics) RecordCacheMiss(ctx context.Context, store string) {
 		attribute.String("operation", "miss"),
 		attribute.String("store", store),
 	))
-}
-
-func (m *Metrics) RecordCacheWrite(ctx context.Context, store string) {
-	m.RecordCacheWriteOutcome(ctx, store, "success")
 }
 
 func (m *Metrics) RecordCacheWriteOutcome(ctx context.Context, store, outcome string) {
@@ -443,9 +416,7 @@ func (m *Metrics) RecordAugurUsage(ctx context.Context, queryType, model string,
 func TrackDbDuration(ctx context.Context, operation string) func() {
 	start := time.Now()
 	return func() {
-		if M != nil {
-			M.RecordDbOperation(ctx, operation, time.Since(start))
-		}
+		M.RecordDbOperation(ctx, operation, time.Since(start))
 	}
 }
 
@@ -499,16 +470,6 @@ func (m *Metrics) RecordBgPersist(ctx context.Context, task, outcome string, dur
 	m.BgPersistOutcomeTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("task", task),
 		attribute.String("outcome", outcome),
-	))
-}
-
-func (m *Metrics) RecordPeopleUpsertBatchSize(ctx context.Context, size int) {
-	m.PeopleUpsertBatchSize.Record(ctx, int64(size))
-}
-
-func (m *Metrics) RecordAgeResolveFanout(ctx context.Context, route string, count int) {
-	m.AgeResolveFanout.Record(ctx, int64(count), metric.WithAttributes(
-		attribute.String("route", route),
 	))
 }
 

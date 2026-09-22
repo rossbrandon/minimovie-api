@@ -102,9 +102,7 @@ func (s *SessionStore) DeleteExpired(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	count := tag.RowsAffected()
-	if metrics.M != nil {
-		metrics.M.RecordDbPurge(ctx, "sessions", count)
-	}
+	metrics.M.RecordDbPurge(ctx, "sessions", count)
 	return count, nil
 }
 

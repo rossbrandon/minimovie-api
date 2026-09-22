@@ -87,9 +87,7 @@ func (s *AuthCodeStore) DeleteExpired(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	count := tag.RowsAffected()
-	if metrics.M != nil {
-		metrics.M.RecordDbPurge(ctx, "auth_code", count)
-	}
+	metrics.M.RecordDbPurge(ctx, "auth_code", count)
 	return count, nil
 }
 

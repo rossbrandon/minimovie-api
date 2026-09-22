@@ -3,7 +3,6 @@ package augur
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -45,9 +44,7 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 	v, err, shared := r.sf.Do(key, func() (any, error) {
 		return r.fetchAndCache(ctx, personID, name)
 	})
-	if metrics.M != nil {
-		metrics.M.RecordSingleflight(ctx, sfGroupName, shared)
-	}
+	metrics.M.RecordSingleflight(ctx, sfGroupName, shared)
 	if err != nil {
 		return nil, err
 	}
@@ -62,23 +59,17 @@ func (r *Resolver) readCache(ctx context.Context, personID int) (*cachedResult, 
 
 	data, _, err := r.store.GetInsights(readCtx, personID)
 	if err != nil || data == nil {
-		if metrics.M != nil {
-			metrics.M.RecordCacheMiss(ctx, "interesting_info")
-		}
+		metrics.M.RecordCacheMiss(ctx, "interesting_info")
 		return nil, false
 	}
 
 	var cached cachedResult
 	if err := json.Unmarshal(data, &cached); err != nil || cached.Data == nil {
-		if metrics.M != nil {
-			metrics.M.RecordCacheMiss(ctx, "interesting_info")
-		}
+		metrics.M.RecordCacheMiss(ctx, "interesting_info")
 		return nil, false
 	}
 
-	if metrics.M != nil {
-		metrics.M.RecordCacheHit(ctx, "interesting_info")
-	}
+	metrics.M.RecordCacheHit(ctx, "interesting_info")
 	log.Info().Int("person_id", personID).Msg("serving person insights from cache")
 	return &cached, true
 }
@@ -99,51 +90,43 @@ func (r *Resolver) fetchAndCache(ctx context.Context, personID int, name string)
 	})
 	duration := time.Since(start)
 
-	if metrics.M != nil {
-		if deadline, ok := ctx.Deadline(); ok {
-			outcome := "success"
-			if err != nil {
-				outcome = "error"
-			}
-			metrics.M.RecordAugurCtxRemaining(ctx, outcome, time.Until(deadline))
+	if deadline, ok := ctx.Deadline(); ok {
+		outcome := "success"
+		if err != nil {
+			outcome = "error"
 		}
+		metrics.M.RecordAugurCtxRemaining(ctx, outcome, time.Until(deadline))
 	}
 
 	if err != nil {
-		if metrics.M != nil {
-			metrics.M.RecordAugurRequest(ctx, augurQueryTypePerson, "error", duration)
-		}
+		metrics.M.RecordAugurRequest(ctx, augurQueryTypePerson, "error", duration)
 		return nil, fmt.Errorf("augur query failed: %w", err)
 	}
 
 	if resp.Data == nil {
-		if metrics.M != nil {
-			metrics.M.RecordAugurRequest(ctx, augurQueryTypePerson, "empty", duration)
-		}
+		metrics.M.RecordAugurRequest(ctx, augurQueryTypePerson, "empty", duration)
 		return nil, fmt.Errorf("augur returned no data for person %d (%s)", personID, name)
 	}
 
-	if metrics.M != nil {
-		metrics.M.RecordAugurRequest(ctx, augurQueryTypePerson, "success", duration)
-		if resp.Usage != nil {
-			metrics.M.RecordAugurUsage(
-				ctx,
-				augurQueryTypePerson,
-				resp.Model,
-				int64(resp.Usage.InputTokens),
-				int64(resp.Usage.OutputTokens),
-			)
+	metrics.M.RecordAugurRequest(ctx, augurQueryTypePerson, "success", duration)
+	if resp.Usage != nil {
+		metrics.M.RecordAugurUsage(
+			ctx,
+			augurQueryTypePerson,
+			resp.Model,
+			int64(resp.Usage.InputTokens),
+			int64(resp.Usage.OutputTokens),
+		)
+	}
+	for fieldName, fm := range resp.Meta {
+		if fm == nil {
+			continue
 		}
-		for fieldName, fm := range resp.Meta {
-			if fm == nil {
-				continue
-			}
-			outcome := "returned"
-			if fm.Confidence < r.minConfidence {
-				outcome = "rejected"
-			}
-			metrics.M.RecordAugurField(ctx, fieldName, outcome, fm.Confidence)
+		outcome := "returned"
+		if fm.Confidence < r.minConfidence {
+			outcome = "rejected"
 		}
+		metrics.M.RecordAugurField(ctx, fieldName, outcome, fm.Confidence)
 	}
 
 	meta := buildMeta(resp.Meta)
@@ -165,26 +148,15 @@ func (r *Resolver) fetchAndCache(ctx context.Context, personID int, name string)
 }
 
 func (r *Resolver) persistCacheAsync(ctx context.Context, personID int, data json.RawMessage) {
-	go func() {
-		bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), augurCacheWriteTimeout)
-		defer cancel()
-
-		start := time.Now()
-		err := r.store.SetInsights(bgCtx, personID, data)
-		duration := time.Since(start)
+	r.bg.Go(ctx, bgPersistTaskName, augurCacheWriteTimeout, func(ctx context.Context) error {
+		err := r.store.SetInsights(ctx, personID, data)
 		outcome := "success"
 		if err != nil {
 			outcome = "error"
-			if errors.Is(err, context.DeadlineExceeded) {
-				outcome = "deadline_exceeded"
-			}
-			log.Error().Err(err).Str("outcome", outcome).Int("person_id", personID).Msg("failed to persist interesting info")
 		}
-		if metrics.M != nil {
-			metrics.M.RecordCacheWriteOutcome(bgCtx, "interesting_info", outcome)
-			metrics.M.RecordBgPersist(bgCtx, bgPersistTaskName, outcome, duration)
-		}
-	}()
+		metrics.M.RecordCacheWriteOutcome(ctx, "interesting_info", outcome)
+		return err
+	})
 }
 
 func buildMeta(augurMeta map[string]*augur.FieldMeta) map[string]*FieldMeta {

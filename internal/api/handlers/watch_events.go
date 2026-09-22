@@ -401,9 +401,7 @@ func (h *Handlers) trackWatchEvent(ctx context.Context, userId, action, mediaTyp
 	if h.achievementWorker != nil {
 		h.achievementWorker.Enqueue(userId)
 	}
-	if metrics.M != nil {
-		metrics.M.RecordWatchEvent(ctx, action, mediaType)
-	}
+	metrics.M.RecordWatchEvent(ctx, action, mediaType)
 }
 
 func normalizeTimezone(tz string) (string, error) {

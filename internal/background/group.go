@@ -36,9 +36,7 @@ func (g *Group) Go(
 		if err != nil {
 			log.Error().Err(err).Str("task", name).Dur("duration_ms", duration).Msg("background task failed")
 		}
-		if metrics.M != nil {
-			metrics.M.RecordBgPersist(ctx, name, outcome, duration)
-		}
+		metrics.M.RecordBgPersist(ctx, name, outcome, duration)
 	})
 }
 

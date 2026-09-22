@@ -101,13 +101,11 @@ func (h *Handlers) handleOAuthSuccess(w http.ResponseWriter, r *http.Request, to
 		return
 	}
 
-	if metrics.M != nil {
-		event := "login_returning"
-		if result.IsNewUser {
-			event = "login_new"
-		}
-		metrics.M.RecordAuthEvent(r.Context(), providerName, event)
+	event := "login_returning"
+	if result.IsNewUser {
+		event = "login_new"
 	}
+	metrics.M.RecordAuthEvent(r.Context(), providerName, event)
 
 	rawToken, err := auth.GenerateToken()
 	if err != nil {
@@ -172,9 +170,7 @@ func (h *Handlers) ExchangeToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if metrics.M != nil {
-		metrics.M.RecordAuthEvent(r.Context(), "any", "token_exchange")
-	}
+	metrics.M.RecordAuthEvent(r.Context(), "any", "token_exchange")
 
 	httputil.JSON(w, http.StatusOK, tokenResponse{SessionToken: authCode.RawSessionToken}, 0)
 }
@@ -215,9 +211,7 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 		log.Error().Err(err).Msg("failed to delete session")
 	}
 
-	if metrics.M != nil {
-		metrics.M.RecordAuthEvent(r.Context(), "any", "logout")
-	}
+	metrics.M.RecordAuthEvent(r.Context(), "any", "logout")
 
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -2,6 +2,7 @@ package achievements
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/rossbrandon/minimovie-api/internal/metrics"
@@ -14,6 +15,9 @@ type Worker struct {
 	achievementStore *store.AchievementStore
 	watchlistStore   store.WatchlistRepository
 	watchEventStore  store.WatchEventRepository
+
+	wg   sync.WaitGroup
+	stop context.CancelFunc
 }
 
 func NewWorker(
@@ -29,8 +33,10 @@ func NewWorker(
 		watchEventStore:  watchEventStore,
 	}
 
-	for i := 0; i < workers; i++ {
-		go w.run()
+	ctx, cancel := context.WithCancel(context.Background())
+	w.stop = cancel
+	for range workers {
+		w.wg.Go(func() { w.run(ctx) })
 	}
 
 	return w
@@ -44,12 +50,21 @@ func (w *Worker) Enqueue(userID string) {
 	}
 }
 
-func (w *Worker) run() {
-	for userID := range w.queue {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		w.checkAll(ctx, userID)
-		cancel()
+func (w *Worker) run(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case userID := <-w.queue:
+			w.checkUser(userID)
+		}
 	}
+}
+
+func (w *Worker) checkUser(userID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	w.checkAll(ctx, userID)
 }
 
 func (w *Worker) checkAll(ctx context.Context, userID string) {
@@ -74,11 +89,11 @@ func (w *Worker) checkSingle(ctx context.Context, userID string, def Definition)
 		return
 	}
 
-	if metrics.M != nil {
-		metrics.M.RecordAchievementEarned(ctx, def.ID)
-	}
+	metrics.M.RecordAchievementEarned(ctx, def.ID)
 }
 
+// Stop ends the workers and waits for the checks in flight.
 func (w *Worker) Stop() {
-	close(w.queue)
+	w.stop()
+	w.wg.Wait()
 }

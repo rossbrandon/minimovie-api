@@ -7,6 +7,7 @@ import (
 
 	augur "github.com/rossbrandon/augur-go"
 	"github.com/rossbrandon/augur-go/providers/claude"
+	"github.com/rossbrandon/minimovie-api/internal/background"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -26,6 +27,7 @@ type insightsStore interface {
 type Resolver struct {
 	client        *augur.Client
 	store         insightsStore
+	bg            *background.Group
 	minConfidence float64
 	sf            singleflight.Group
 }
@@ -57,7 +59,7 @@ type PersonInterestingInfo struct {
 }
 
 // New creates a new augur Resolver. Returns nil if cfg.ApiKey is empty (feature disabled).
-func New(infoStore insightsStore, cfg Config) *Resolver {
+func New(infoStore insightsStore, bg *background.Group, cfg Config) *Resolver {
 	if cfg.ApiKey == "" {
 		return nil
 	}
@@ -80,6 +82,7 @@ func New(infoStore insightsStore, cfg Config) *Resolver {
 	return &Resolver{
 		client:        client,
 		store:         infoStore,
+		bg:            bg,
 		minConfidence: cfg.MinConfidence,
 	}
 }

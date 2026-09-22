@@ -60,9 +60,7 @@ func (h *Handlers) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if metrics.M != nil {
-		metrics.M.RecordAuthEvent(r.Context(), "any", "account_delete")
-	}
+	metrics.M.RecordAuthEvent(r.Context(), "any", "account_delete")
 
 	httputil.JSON(w, http.StatusOK, map[string]bool{"deleted": true}, 0)
 }

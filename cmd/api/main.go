@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
-	"strings"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/rossbrandon/minimovie-api/config"
 	"github.com/rossbrandon/minimovie-api/internal/achievements"
@@ -36,7 +40,9 @@ func main() {
 		zerolog.SetGlobalLevel(level)
 	}
 
-	validateConfig(cfg)
+	if err := cfg.ValidateAPI(); err != nil {
+		log.Fatal().Err(err).Msg("Invalid config")
+	}
 
 	log.Info().Msg("Starting MiniMovie API")
 
@@ -62,10 +68,8 @@ func main() {
 	}
 	defer pool.Close()
 
-	if metrics.M != nil {
-		if err := metrics.M.RegisterDbPoolGauges(pool); err != nil {
-			log.Warn().Err(err).Msg("Failed to register db pool gauges")
-		}
+	if err := metrics.M.RegisterDbPoolGauges(pool); err != nil {
+		log.Warn().Err(err).Msg("Failed to register db pool gauges")
 	}
 
 	// Initialize stores
@@ -104,7 +108,7 @@ func main() {
 	// Initialize interesting info enrichment
 	var augurResolver *augur.Resolver
 	if cfg.AnthropicApiKey != "" {
-		augurResolver = augur.New(personStore, augur.Config{
+		augurResolver = augur.New(personStore, &bg, augur.Config{
 			ApiKey:        cfg.AnthropicApiKey,
 			Model:         cfg.AugurModel,
 			MaxTokens:     cfg.AugurMaxTokens,
@@ -137,7 +141,6 @@ func main() {
 
 	// Initialize achievement worker
 	achievementWorker := achievements.NewWorker(achievementStore, watchlistStore, watchEventStore, 8)
-	defer achievementWorker.Stop()
 
 	// Initialize API server
 	httputil.DefaultCacheMaxAge = cfg.CacheMaxAge
@@ -159,40 +162,42 @@ func main() {
 		AchievementWorker: achievementWorker,
 	})
 
-	r := api.NewRouter(h, cfg, sessionStore)
-	log.Info().Msg("Server is listening on port " + cfg.Port)
-	if err := http.ListenAndServe(":"+cfg.Port, r); err != nil {
-		log.Fatal().Err(err).Msg("Failed to start server")
+	srv := &http.Server{
+		Addr:              ":" + cfg.Port,
+		Handler:           api.NewRouter(h, cfg, sessionStore),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
+	serve(srv, &bg, func() {
+		achievementWorker.Stop()
+		svc.Stop()
+	})
 }
 
-func validateConfig(cfg *config.Config) {
-	if cfg.MiniMovieUiSecret == "" {
-		log.Fatal().Msg("MINI_MOVIE_UI_SECRET must be set")
-	}
-	if len(cfg.SessionSecret) < 32 {
-		log.Fatal().Msg("SESSION_SECRET must be set and at least 32 bytes")
-	}
-	if len(cfg.TokenEncryptionKey) != 32 {
-		log.Fatal().Msg("TOKEN_ENCRYPTION_KEY must be set and exactly 32 bytes")
-	}
-	if cfg.GoogleClientID == "" && cfg.AppleClientID == "" {
-		log.Fatal().Msg("At least one OAuth provider (GOOGLE_CLIENT_ID or APPLE_CLIENT_ID) must be configured")
-	}
-	if cfg.AuthBaseURL == "" {
-		log.Fatal().Str("auth_base_url", cfg.AuthBaseURL).Msg("AUTH_BASE_URL must be set")
-	}
-	if cfg.AuthUIBaseURL == "" {
-		log.Fatal().Str("auth_ui_base_url", cfg.AuthUIBaseURL).Msg("AUTH_UI_BASE_URL must be set")
+func serve(srv *http.Server, bg *background.Group, stopWorkers func()) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	failed := make(chan error, 1)
+	go func() {
+		log.Info().Msg("Server is listening on " + srv.Addr)
+		failed <- srv.ListenAndServe()
+	}()
+	select {
+	case err := <-failed:
+		log.Fatal().Err(err).Msg("Failed to start server")
+	case <-ctx.Done():
 	}
 
-	// Production validations
-	if cfg.IsProduction {
-		if !strings.HasPrefix(cfg.AuthBaseURL, "https://") {
-			log.Fatal().Str("auth_base_url", cfg.AuthBaseURL).Msg("AUTH_BASE_URL must use HTTPS in production")
-		}
-		if !strings.HasPrefix(cfg.AuthUIBaseURL, "https://") {
-			log.Fatal().Str("auth_ui_base_url", cfg.AuthUIBaseURL).Msg("AUTH_UI_BASE_URL must use HTTPS in production")
-		}
+	log.Info().Msg("Shutting down")
+	drain, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(drain); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Warn().Err(err).Msg("server shutdown did not finish cleanly")
 	}
+	if err := bg.Wait(drain); err != nil {
+		log.Warn().Err(err).Msg("background work was still running at shutdown")
+	}
+	stopWorkers()
 }

@@ -175,9 +175,7 @@ func (c *Client) doGet(ctx context.Context, path string) ([]byte, time.Duration,
 	res, err := c.httpClient.Do(req)
 	duration := time.Since(start)
 	if err != nil {
-		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", 0, duration)
-		}
+		metrics.M.RecordTmdbRequest(ctx, endpoint, "error", 0, duration)
 		log.Debug().Str("endpoint", endpoint).Dur("duration_ms", duration).Msg("tmdb api call failed")
 		return nil, 0, fmt.Errorf("%w: %w", ErrTransport, err)
 	}
@@ -185,28 +183,18 @@ func (c *Client) doGet(ctx context.Context, path string) ([]byte, time.Duration,
 
 	switch {
 	case res.StatusCode == http.StatusOK:
-		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "success", res.StatusCode, duration)
-		}
+		metrics.M.RecordTmdbRequest(ctx, endpoint, "success", res.StatusCode, duration)
 	case res.StatusCode == http.StatusNotFound:
-		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "not_found", res.StatusCode, duration)
-		}
+		metrics.M.RecordTmdbRequest(ctx, endpoint, "not_found", res.StatusCode, duration)
 		return nil, 0, ErrNotFound
 	case res.StatusCode == http.StatusTooManyRequests:
-		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "rate_limited", res.StatusCode, duration)
-		}
+		metrics.M.RecordTmdbRequest(ctx, endpoint, "rate_limited", res.StatusCode, duration)
 		return nil, retryAfter(res.Header), ErrRateLimited
 	case res.StatusCode >= 500:
-		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, duration)
-		}
+		metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, duration)
 		return nil, retryAfter(res.Header), ErrServerError
 	default:
-		if metrics.M != nil {
-			metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, duration)
-		}
+		metrics.M.RecordTmdbRequest(ctx, endpoint, "error", res.StatusCode, duration)
 		errBody, _ := io.ReadAll(res.Body)
 		return nil, 0, fmt.Errorf("unexpected status: %d %s", res.StatusCode, string(errBody))
 	}
