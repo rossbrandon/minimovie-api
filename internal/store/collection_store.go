@@ -46,7 +46,7 @@ func (s *CollectionStore) GetBySourceID(ctx context.Context, sourceID int) (*Col
 }
 
 func (s *CollectionStore) Upsert(ctx context.Context, db DBTX, c Collection) (int, error) {
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "collections.write")()
 
 	id, err := scanID(db.QueryRow(ctx, `
 		insert into collections (source_id, name, payload, fetched_at, updated_at)
@@ -65,7 +65,7 @@ func (s *CollectionStore) DeleteExpired(ctx context.Context) (int64, error) {
 }
 
 func (s *CollectionStore) getOne(ctx context.Context, where string, arg any) (*Collection, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, "collections.read")()
 
 	rows, err := s.pool.Query(ctx, `select `+collectionColumns+` from collections `+where, arg)
 	if err != nil {

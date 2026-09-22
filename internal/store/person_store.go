@@ -68,7 +68,7 @@ func (s *PersonStore) GetDates(ctx context.Context, sourceIDs []int) (map[int]Pe
 	if len(sourceIDs) == 0 {
 		return result, nil
 	}
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, "people.read")()
 
 	rows, err := s.pool.Query(ctx, `
 		select id, source_id, date_of_birth, date_of_death, popularity, payload is not null
@@ -109,7 +109,7 @@ func (s *PersonStore) GetBySourceID(ctx context.Context, sourceID int) (*Person,
 
 // UpsertHydrated writes a fully populated people row and returns the row's id.
 func (s *PersonStore) UpsertHydrated(ctx context.Context, db DBTX, p Person) (int, error) {
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "people.write")()
 	if p.AlsoKnownAs == nil {
 		p.AlsoKnownAs = []string{}
 	}
@@ -144,7 +144,7 @@ func (s *PersonStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Person
 	if len(rows) == 0 {
 		return nil
 	}
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "people.write")()
 
 	// Same order in every statement, so concurrent bulk upserts cannot deadlock each other.
 	slices.SortFunc(rows, func(a, b PersonSkeleton) int { return cmp.Compare(a.SourceID, b.SourceID) })
@@ -181,7 +181,7 @@ func (s *PersonStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Person
 
 // GetInsights returns the cached person insights result and when it was produced.
 func (s *PersonStore) GetInsights(ctx context.Context, id int) (json.RawMessage, *time.Time, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, "people.read")()
 
 	var data json.RawMessage
 	var at *time.Time
@@ -196,7 +196,7 @@ func (s *PersonStore) GetInsights(ctx context.Context, id int) (json.RawMessage,
 }
 
 func (s *PersonStore) SetInsights(ctx context.Context, id int, data json.RawMessage) error {
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "people.write")()
 
 	_, err := s.pool.Exec(ctx, `update people set insights = $2, insights_at = now(), updated_at = now() where id = $1`, id, data)
 	if err != nil {
@@ -206,7 +206,7 @@ func (s *PersonStore) SetInsights(ctx context.Context, id int, data json.RawMess
 }
 
 func (s *PersonStore) getOne(ctx context.Context, where string, arg any) (*Person, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, "people.read")()
 
 	rows, err := s.pool.Query(ctx, `select `+personColumns+` from people `+where, arg)
 	if err != nil {

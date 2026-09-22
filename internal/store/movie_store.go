@@ -65,7 +65,7 @@ func (s *MovieStore) GetBySourceID(ctx context.Context, sourceID int) (*Movie, e
 }
 
 func (s *MovieStore) UpsertHydrated(ctx context.Context, db DBTX, m Movie) (int, error) {
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "movies.write")()
 	if m.Genres == nil {
 		m.Genres = []string{}
 	}
@@ -102,7 +102,7 @@ func (s *MovieStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Skeleto
 	if len(rows) == 0 {
 		return nil
 	}
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "movies.write")()
 
 	cols := skeletonColumns(rows)
 	_, err := db.Exec(ctx, `
@@ -127,7 +127,7 @@ func (s *MovieStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Skeleto
 }
 
 func (s *MovieStore) getOne(ctx context.Context, where string, arg any) (*Movie, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, "movies.read")()
 
 	rows, err := s.pool.Query(ctx, `select `+movieColumns+` from movies `+where, arg)
 	if err != nil {

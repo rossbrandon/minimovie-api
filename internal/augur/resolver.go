@@ -41,10 +41,9 @@ func (r *Resolver) GetPersonInsights(ctx context.Context, personID int, name str
 	}
 
 	key := sfGroupName + ":" + strconv.Itoa(personID)
-	v, err, shared := r.sf.Do(key, func() (any, error) {
+	v, err, _ := r.sf.Do(key, func() (any, error) {
 		return r.fetchAndCache(ctx, personID, name)
 	})
-	metrics.M.RecordSingleflight(ctx, sfGroupName, shared)
 	if err != nil {
 		return nil, err
 	}
@@ -90,14 +89,6 @@ func (r *Resolver) fetchAndCache(ctx context.Context, personID int, name string)
 	})
 	duration := time.Since(start)
 
-	if deadline, ok := ctx.Deadline(); ok {
-		outcome := "success"
-		if err != nil {
-			outcome = "error"
-		}
-		metrics.M.RecordAugurCtxRemaining(ctx, outcome, time.Until(deadline))
-	}
-
 	if err != nil {
 		metrics.M.RecordAugurRequest(ctx, augurQueryTypePerson, "error", duration)
 		return nil, fmt.Errorf("augur query failed: %w", err)
@@ -126,7 +117,7 @@ func (r *Resolver) fetchAndCache(ctx context.Context, personID int, name string)
 		if fm.Confidence < r.minConfidence {
 			outcome = "rejected"
 		}
-		metrics.M.RecordAugurField(ctx, fieldName, outcome, fm.Confidence)
+		metrics.M.RecordAugurField(ctx, fieldName, outcome)
 	}
 
 	meta := buildMeta(resp.Meta)

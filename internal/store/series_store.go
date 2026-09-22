@@ -57,7 +57,7 @@ func (s *SeriesStore) GetBySourceID(ctx context.Context, sourceID int) (*Series,
 }
 
 func (s *SeriesStore) UpsertHydrated(ctx context.Context, db DBTX, sr Series) (int, error) {
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "series.write")()
 	if sr.Genres == nil {
 		sr.Genres = []string{}
 	}
@@ -99,7 +99,7 @@ func (s *SeriesStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Skelet
 	if len(rows) == 0 {
 		return nil
 	}
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "series.write")()
 
 	cols := skeletonColumns(rows)
 	_, err := db.Exec(ctx, `
@@ -124,7 +124,7 @@ func (s *SeriesStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Skelet
 }
 
 func (s *SeriesStore) getOne(ctx context.Context, where string, arg any) (*Series, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, "series.read")()
 
 	rows, err := s.pool.Query(ctx, `select `+seriesColumns+` from series `+where, arg)
 	if err != nil {

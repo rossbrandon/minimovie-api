@@ -46,7 +46,7 @@ func (s *SeasonStore) TableName() string {
 }
 
 func (s *SeasonStore) Get(ctx context.Context, seriesID, seasonNumber int) (*Season, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, "seasons.read")()
 
 	rows, err := s.pool.Query(ctx, `select `+seasonColumns+` from seasons where series_id = $1 and season_number = $2`, seriesID, seasonNumber)
 	if err != nil {
@@ -63,7 +63,7 @@ func (s *SeasonStore) Get(ctx context.Context, seriesID, seasonNumber int) (*Sea
 }
 
 func (s *SeasonStore) ListBySeries(ctx context.Context, seriesID int) ([]Season, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, "seasons.read")()
 
 	rows, err := s.pool.Query(ctx, `select `+seasonColumns+` from seasons where series_id = $1 order by season_number`, seriesID)
 	if err != nil {
@@ -77,7 +77,7 @@ func (s *SeasonStore) ListBySeries(ctx context.Context, seriesID int) ([]Season,
 }
 
 func (s *SeasonStore) IDsBySeries(ctx context.Context, seriesID int) (map[int]int, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, "seasons.read")()
 
 	rows, err := s.pool.Query(ctx, `select season_number, id from seasons where series_id = $1`, seriesID)
 	if err != nil {
@@ -94,7 +94,7 @@ func (s *SeasonStore) UpsertSkeletons(ctx context.Context, db DBTX, seriesID int
 	if len(rows) == 0 {
 		return nil
 	}
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "seasons.write")()
 
 	numbers := make([]int32, len(rows))
 	sourceIDs := make([]int32, len(rows))
@@ -104,7 +104,12 @@ func (s *SeasonStore) UpsertSkeletons(ctx context.Context, db DBTX, seriesID int
 		sourceIDs[i] = int32(r.SourceID)
 		names[i] = r.Name
 	}
-	_, err := db.Exec(ctx, `
+
+	_, err := db.Exec(ctx, `delete from seasons where series_id = $1 and source_id <> all($2::int[])`, seriesID, sourceIDs)
+	if err != nil {
+		return fmt.Errorf("season store: drop unlisted seasons for series %d: %w", seriesID, err)
+	}
+	_, err = db.Exec(ctx, `
 		insert into seasons (series_id, season_number, source_id, name, updated_at)
 		select $1, u.number, u.source_id, u.name, now()
 		from unnest($2::int[], $3::int[], $4::text[]) as u(number, source_id, name)
@@ -119,7 +124,7 @@ func (s *SeasonStore) UpsertSkeletons(ctx context.Context, db DBTX, seriesID int
 }
 
 func (s *SeasonStore) Upsert(ctx context.Context, db DBTX, season Season) (int, error) {
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "seasons.write")()
 
 	id, err := scanID(db.QueryRow(ctx, `
 		insert into seasons (series_id, season_number, source_id, name, payload, stale, fetched_at, updated_at)
@@ -139,7 +144,7 @@ func (s *SeasonStore) MarkStaleBySeries(ctx context.Context, seriesIDs []int) (i
 	if len(seriesIDs) == 0 {
 		return 0, nil
 	}
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "seasons.write")()
 
 	tag, err := s.pool.Exec(ctx, `update seasons set stale = true, updated_at = now()
 		where series_id = any($1) and payload is not null and not stale`, seriesIDs)
@@ -154,7 +159,7 @@ func (s *SeasonStore) DeleteExpired(ctx context.Context) (int64, error) {
 }
 
 func (s *SeasonStore) Delete(ctx context.Context, db DBTX, seriesID, seasonNumber int) error {
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "seasons.write")()
 
 	if _, err := db.Exec(ctx, `delete from seasons where series_id = $1 and season_number = $2`, seriesID, seasonNumber); err != nil {
 		return fmt.Errorf("season store: delete %d/%d: %w", seriesID, seasonNumber, err)

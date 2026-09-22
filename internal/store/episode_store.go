@@ -47,7 +47,7 @@ func (s *EpisodeStore) TableName() string {
 }
 
 func (s *EpisodeStore) Get(ctx context.Context, seriesID, seasonNumber, episodeNumber int) (*Episode, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, "episodes.read")()
 
 	rows, err := s.pool.Query(ctx, `select `+episodeColumns+` from episodes where series_id = $1 and season_number = $2 and episode_number = $3`,
 		seriesID, seasonNumber, episodeNumber)
@@ -65,7 +65,7 @@ func (s *EpisodeStore) Get(ctx context.Context, seriesID, seasonNumber, episodeN
 }
 
 func (s *EpisodeStore) IDsBySeason(ctx context.Context, seriesID, seasonNumber int) (map[int]int, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, "episodes.read")()
 
 	rows, err := s.pool.Query(ctx, `select episode_number, id from episodes where series_id = $1 and season_number = $2`,
 		seriesID, seasonNumber)
@@ -83,7 +83,7 @@ func (s *EpisodeStore) UpsertSkeletons(ctx context.Context, db DBTX, seriesID, s
 	if len(rows) == 0 {
 		return nil
 	}
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "episodes.write")()
 
 	numbers := make([]int32, len(rows))
 	sourceIDs := make([]int32, len(rows))
@@ -93,7 +93,13 @@ func (s *EpisodeStore) UpsertSkeletons(ctx context.Context, db DBTX, seriesID, s
 		sourceIDs[i] = int32(r.SourceID)
 		names[i] = r.Name
 	}
-	_, err := db.Exec(ctx, `
+
+	_, err := db.Exec(ctx, `delete from episodes where series_id = $1 and season_number = $2 and source_id <> all($3::int[])`,
+		seriesID, seasonNumber, sourceIDs)
+	if err != nil {
+		return fmt.Errorf("episode store: drop unlisted episodes for %d/%d: %w", seriesID, seasonNumber, err)
+	}
+	_, err = db.Exec(ctx, `
 		insert into episodes (series_id, season_number, episode_number, source_id, name, updated_at)
 		select $1, $2, u.number, u.source_id, u.name, now()
 		from unnest($3::int[], $4::int[], $5::text[]) as u(number, source_id, name)
@@ -108,7 +114,7 @@ func (s *EpisodeStore) UpsertSkeletons(ctx context.Context, db DBTX, seriesID, s
 }
 
 func (s *EpisodeStore) Upsert(ctx context.Context, db DBTX, ep Episode) (int, error) {
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "episodes.write")()
 
 	id, err := scanID(db.QueryRow(ctx, `
 		insert into episodes (series_id, season_number, episode_number, source_id, name, payload, stale, fetched_at, updated_at)
@@ -128,7 +134,7 @@ func (s *EpisodeStore) MarkStaleBySeries(ctx context.Context, seriesIDs []int) (
 	if len(seriesIDs) == 0 {
 		return 0, nil
 	}
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "episodes.write")()
 
 	tag, err := s.pool.Exec(ctx, `update episodes set stale = true, updated_at = now()
 		where series_id = any($1) and payload is not null and not stale`, seriesIDs)
@@ -143,7 +149,7 @@ func (s *EpisodeStore) DeleteExpired(ctx context.Context) (int64, error) {
 }
 
 func (s *EpisodeStore) Delete(ctx context.Context, db DBTX, seriesID, seasonNumber, episodeNumber int) error {
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, "episodes.write")()
 
 	if _, err := db.Exec(ctx, `delete from episodes where series_id = $1 and season_number = $2 and episode_number = $3`,
 		seriesID, seasonNumber, episodeNumber); err != nil {

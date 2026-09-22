@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -32,17 +33,13 @@ type Metrics struct {
 
 	AugurRequestsTotal       metric.Int64Counter
 	AugurRequestDuration     metric.Float64Histogram
-	AugurCtxRemaining        metric.Float64Histogram
 	AugurFieldsTotal         metric.Int64Counter
-	AugurFieldConfidence     metric.Float64Histogram
 	AugurTokensTotal         metric.Int64Counter
 	AuthEventsTotal          metric.Int64Counter
 	WatchlistOperationsTotal metric.Int64Counter
 	WatchEventsTotal         metric.Int64Counter
 	AchievementsEarnedTotal  metric.Int64Counter
 
-	SingleflightTotal     metric.Int64Counter
-	BgPersistDuration     metric.Float64Histogram
 	BgPersistOutcomeTotal metric.Int64Counter
 
 	DbPoolAcquiredConns        metric.Int64ObservableGauge
@@ -101,7 +98,7 @@ func initMetrics(meter metric.Meter) (*Metrics, error) {
 	m.HttpRequestDuration, err = meter.Float64Histogram("http_request_duration_seconds",
 		metric.WithDescription("HTTP request duration in seconds"),
 		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10),
+		metric.WithExplicitBucketBoundaries(0.025, 0.05, 0.1, 0.25, 0.5, 1, 5, 10),
 	)
 	if err != nil {
 		return nil, err
@@ -184,15 +181,6 @@ func initMetrics(meter metric.Meter) (*Metrics, error) {
 		return nil, err
 	}
 
-	m.AugurFieldConfidence, err = meter.Float64Histogram("augur_field_confidence",
-		metric.WithDescription("Confidence score returned by Augur for individual enriched fields (0..1)"),
-		metric.WithUnit("{score}"),
-		metric.WithExplicitBucketBoundaries(0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0),
-	)
-	if err != nil {
-		return nil, err
-	}
-
 	m.AugurTokensTotal, err = meter.Int64Counter("augur_tokens_total",
 		metric.WithDescription("Total tokens consumed by Augur LLM calls, split by input vs output and model"),
 		metric.WithUnit("{token}"),
@@ -228,32 +216,6 @@ func initMetrics(meter metric.Meter) (*Metrics, error) {
 	m.AchievementsEarnedTotal, err = meter.Int64Counter("achievements_earned_total",
 		metric.WithDescription("Total achievements awarded by achievement type"),
 		metric.WithUnit("{achievement}"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	m.AugurCtxRemaining, err = meter.Float64Histogram("augur_ctx_remaining_seconds",
-		metric.WithDescription("Context budget remaining when Augur returns; trending toward 0 means AUGUR_TIMEOUT is too tight"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(0, 0.5, 1, 2, 5, 10, 15, 20, 30, 45, 60),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	m.SingleflightTotal, err = meter.Int64Counter("singleflight_total",
-		metric.WithDescription("Singleflight invocations by group and shared status; shared=true means the call piggy-backed on an in-flight call"),
-		metric.WithUnit("{call}"),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	m.BgPersistDuration, err = meter.Float64Histogram("bg_persist_duration_seconds",
-		metric.WithDescription("Duration of background persist tasks (cache-warming writes detached from request context)"),
-		metric.WithUnit("s"),
-		metric.WithExplicitBucketBoundaries(0.005, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5),
 	)
 	if err != nil {
 		return nil, err
@@ -341,11 +303,9 @@ func (m *Metrics) RecordTmdbRequest(ctx context.Context, endpoint, status string
 }
 
 func (m *Metrics) RecordDbOperation(ctx context.Context, operation string, duration time.Duration) {
-	attrs := []attribute.KeyValue{
-		attribute.String("operation", operation),
-	}
-	m.DbOperationsTotal.Add(ctx, 1, metric.WithAttributes(attrs...))
-	m.DbOperationDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(attrs...))
+	entity, _, _ := strings.Cut(operation, ".")
+	m.DbOperationsTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("operation", operation)))
+	m.DbOperationDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(attribute.String("entity", entity)))
 }
 
 func (m *Metrics) RecordCacheHit(ctx context.Context, store string) {
@@ -386,13 +346,10 @@ func (m *Metrics) RecordAugurRequest(ctx context.Context, queryType, status stri
 	))
 }
 
-func (m *Metrics) RecordAugurField(ctx context.Context, field, outcome string, confidence float64) {
+func (m *Metrics) RecordAugurField(ctx context.Context, field, outcome string) {
 	m.AugurFieldsTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("field", field),
 		attribute.String("outcome", outcome),
-	))
-	m.AugurFieldConfidence.Record(ctx, confidence, metric.WithAttributes(
-		attribute.String("field", field),
 	))
 }
 
@@ -401,14 +358,14 @@ func (m *Metrics) RecordAugurUsage(ctx context.Context, queryType, model string,
 		m.AugurTokensTotal.Add(ctx, inputTokens, metric.WithAttributes(
 			attribute.String("query_type", queryType),
 			attribute.String("model", model),
-			attribute.String("kind", "input"),
+			attribute.String("direction", "input"),
 		))
 	}
 	if outputTokens > 0 {
 		m.AugurTokensTotal.Add(ctx, outputTokens, metric.WithAttributes(
 			attribute.String("query_type", queryType),
 			attribute.String("model", model),
-			attribute.String("kind", "output"),
+			attribute.String("direction", "output"),
 		))
 	}
 }
@@ -447,26 +404,7 @@ func (m *Metrics) RecordAchievementEarned(ctx context.Context, achievementID str
 	))
 }
 
-func (m *Metrics) RecordSingleflight(ctx context.Context, group string, shared bool) {
-	m.SingleflightTotal.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("group", group),
-		attribute.Bool("shared", shared),
-	))
-}
-
-func (m *Metrics) RecordAugurCtxRemaining(ctx context.Context, outcome string, remaining time.Duration) {
-	if remaining < 0 {
-		remaining = 0
-	}
-	m.AugurCtxRemaining.Record(ctx, remaining.Seconds(), metric.WithAttributes(
-		attribute.String("outcome", outcome),
-	))
-}
-
-func (m *Metrics) RecordBgPersist(ctx context.Context, task, outcome string, duration time.Duration) {
-	m.BgPersistDuration.Record(ctx, duration.Seconds(), metric.WithAttributes(
-		attribute.String("task", task),
-	))
+func (m *Metrics) RecordBgPersist(ctx context.Context, task, outcome string) {
 	m.BgPersistOutcomeTotal.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("task", task),
 		attribute.String("outcome", outcome),

@@ -81,7 +81,7 @@ func (t catalogTable) MarkStale(ctx context.Context, sourceIDs []int) (int64, er
 	if len(sourceIDs) == 0 {
 		return 0, nil
 	}
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, t.name+".write")()
 
 	// Only a hydrated row has anything to refresh
 	tag, err := t.pool.Exec(ctx, `update `+t.name+` set stale = true, updated_at = now()
@@ -96,7 +96,7 @@ func (t catalogTable) IDsBySource(ctx context.Context, sourceIDs []int) (map[int
 	if len(sourceIDs) == 0 {
 		return map[int]int{}, nil
 	}
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, t.name+".read")()
 
 	rows, err := t.pool.Query(ctx, `select source_id, id from `+t.name+` where source_id = any($1)`, sourceIDs)
 	if err != nil {
@@ -110,7 +110,7 @@ func (t catalogTable) IDsBySource(ctx context.Context, sourceIDs []int) (map[int
 }
 
 func (t catalogTable) DeleteBySourceID(ctx context.Context, db DBTX, sourceID int) error {
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, t.name+".write")()
 
 	if _, err := db.Exec(ctx, `delete from `+t.name+` where source_id = $1`, sourceID); err != nil {
 		return fmt.Errorf("%s store: delete source %d: %w", t.name, sourceID, err)
@@ -124,7 +124,7 @@ func (t catalogTable) DeleteExpired(ctx context.Context) (int64, error) {
 
 // Claim locks up to p.Limit rows of one work class for the calling transaction and returns their source ids.
 func (t catalogTable) Claim(ctx context.Context, tx pgx.Tx, class WorkClass, p ClaimParams) ([]int, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, t.name+".read")()
 
 	exclude := p.Exclude
 	if exclude == nil {
@@ -156,7 +156,7 @@ func (t catalogTable) Claim(ctx context.Context, tx pgx.Tx, class WorkClass, p C
 }
 
 func (t catalogTable) Stats(ctx context.Context) (CatalogStats, error) {
-	defer metrics.TrackDbDuration(ctx, "read")()
+	defer metrics.TrackDbDuration(ctx, t.name+".read")()
 
 	rows, err := t.pool.Query(ctx, `
 		select $1::text as table_name,
@@ -178,7 +178,7 @@ func (t catalogTable) Stats(ctx context.Context) (CatalogStats, error) {
 }
 
 func purgeExpired(ctx context.Context, pool *pgxpool.Pool, table string) (int64, error) {
-	defer metrics.TrackDbDuration(ctx, "write")()
+	defer metrics.TrackDbDuration(ctx, table+".write")()
 
 	// Rows never hydrated have no fetched_at, so the cap applies only to rows holding a TMDB document.
 	tag, err := pool.Exec(ctx, `delete from `+table+` where fetched_at < now() - make_interval(secs => $1)`, ExpireAfter.Seconds())

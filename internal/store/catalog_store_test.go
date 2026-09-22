@@ -387,3 +387,25 @@ func TestSeasonStore_UpsertSkeletonsSurvivesRenumbering(t *testing.T) {
 	}
 	assert.Equal(t, map[int]int{100: 2, 200: 1}, numbers)
 }
+
+func TestUpsertSkeletonsDropsRowsTheDocumentNoLongerLists(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	seasons := NewSeasonStore(testPool)
+	episodes := NewEpisodeStore(testPool)
+
+	require.NoError(t, seasons.UpsertSkeletons(ctx, testPool, 7, []SeasonSkeleton{{SeasonNumber: 5, SourceID: 100, Name: "New Blood"}}))
+	require.NoError(t, episodes.UpsertSkeletons(ctx, testPool, 7, 5, []EpisodeSkeleton{{EpisodeNumber: 1, SourceID: 1000, Name: "Pilot"}}))
+
+	// TMDB recreated season 5 and its episode under new ids.
+	require.NoError(t, seasons.UpsertSkeletons(ctx, testPool, 7, []SeasonSkeleton{{SeasonNumber: 5, SourceID: 101, Name: "New Blood"}}))
+	require.NoError(t, episodes.UpsertSkeletons(ctx, testPool, 7, 5, []EpisodeSkeleton{{EpisodeNumber: 1, SourceID: 1001, Name: "Pilot"}}))
+
+	listed, err := seasons.ListBySeries(ctx, 7)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	assert.Equal(t, 101, listed[0].SourceID)
+	ep, err := episodes.Get(ctx, 7, 5, 1)
+	require.NoError(t, err)
+	assert.Equal(t, 1001, ep.SourceID)
+}
