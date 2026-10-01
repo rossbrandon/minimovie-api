@@ -5,8 +5,8 @@ info:
     API for retrieving intuitive movie, TV series, and person information.
 
     Every id the API accepts or returns for movies, series, seasons, episodes, people, and
-    collections is a catalog id of its own, not the provider's. Path ids may be given as the bare
-    id or as the slug the responses carry (`155-the-dark-knight`); the leading number resolves it.
+    collections is a catalog id. Path ids may be given as the bare id (e.g. `155`) or as the slug
+    (e.g. `155-the-dark-knight`).
     Every entry that links to a movie, series, or person carries its `slug` beside its `id`, nested
     ones included, so a client can build every link in slug form. Seasons and episodes have no slug.
     A nested entry whose catalog row does not exist yet (a credited person, a filmography title, a
@@ -1403,7 +1403,7 @@ components:
           type: integer
         slug:
           type: string
-          description: Route form of the id (155-the-dark-knight); absent on collection parts
+          description: Route form of the id (155-the-dark-knight)
         imdbID:
           type: string
         title:

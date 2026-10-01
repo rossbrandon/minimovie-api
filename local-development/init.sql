@@ -50,7 +50,7 @@ as $$ select trim(both '-' from regexp_replace(lower(immutable_unaccent(coalesce
  * Movies
  */
 create table if not exists movies (
-    id                integer generated always as identity primary key,
+    id                integer primary key,
     source_id         integer not null unique,
     slug              text generated always as (rtrim(id::text || '-' || slugify(title), '-')) stored,
     title             text not null default '',
@@ -85,7 +85,7 @@ create index if not exists idx_movies_needs_work on movies (popularity desc) whe
  * TV Series
  */
 create table if not exists series (
-    id                    integer generated always as identity primary key,
+    id                    integer primary key,
     source_id             integer not null unique,
     slug                  text generated always as (rtrim(id::text || '-' || slugify(name), '-')) stored,
     name                  text not null default '',
@@ -124,7 +124,7 @@ create index if not exists idx_series_needs_work on series (popularity desc) whe
  * season itself is fetched.
  */
 create table if not exists seasons (
-    id             integer generated always as identity primary key,
+    id             integer primary key,
     series_id      integer not null,                             -- series.id
     season_number  integer not null,
     source_id      integer not null unique,
@@ -147,7 +147,7 @@ create index if not exists idx_seasons_stale on seasons (series_id) where stale;
  * episode itself is fetched.
  */
 create table if not exists episodes (
-    id              integer generated always as identity primary key,
+    id              integer primary key,
     series_id       integer not null,                            -- series.id
     season_number   integer not null,
     episode_number  integer not null,
@@ -168,7 +168,7 @@ create index if not exists idx_episodes_stale on episodes (series_id) where stal
  * Movie Collections
  */
 create table if not exists collections (
-    id         integer generated always as identity primary key,
+    id         integer primary key,
     source_id  integer not null unique,
     slug       text generated always as (rtrim(id::text || '-' || slugify(name), '-')) stored,
     name       text not null default '',
@@ -182,7 +182,7 @@ create table if not exists collections (
  * People
  */
 create table if not exists people (
-    id                   integer generated always as identity primary key,
+    id                   integer primary key,
     source_id            integer not null unique,
     slug                 text generated always as (rtrim(id::text || '-' || slugify(name), '-')) stored,
     name                 text not null default '',

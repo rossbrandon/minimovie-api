@@ -63,10 +63,10 @@ func (s *SeriesStore) UpsertHydrated(ctx context.Context, db DBTX, sr Series) (i
 	}
 
 	id, err := scanID(db.QueryRow(ctx, `
-		insert into series (source_id, name, original_name, overview, first_air_date, next_air_date, in_production,
+		insert into series (id, source_id, name, original_name, overview, first_air_date, next_air_date, in_production,
 		                    total_seasons, total_episodes, episode_run_time, popularity, vote_average, poster_path,
 		                    genres, payload, stale, fetched_at, updated_at)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, false, now(), now())
+		values ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, false, now(), now())
 		on conflict (source_id) do update set
 			name             = excluded.name,
 			original_name    = excluded.original_name,
@@ -103,8 +103,9 @@ func (s *SeriesStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Skelet
 
 	cols := skeletonColumns(rows)
 	_, err := db.Exec(ctx, `
-		insert into series (source_id, name, original_name, overview, poster_path, first_air_date, vote_average, popularity, updated_at)
-		select u.source_id, u.name, u.name, u.overview, u.poster, u.first_air_date::date, u.vote, u.popularity, now()
+		insert into series (id, source_id, name, original_name, overview, poster_path, first_air_date, vote_average,
+		                    popularity, updated_at)
+		select u.source_id, u.source_id, u.name, u.name, u.overview, u.poster, u.first_air_date::date, u.vote, u.popularity, now()
 		from unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::text[], $6::real[], $7::real[])
 			as u(source_id, name, overview, poster, first_air_date, vote, popularity)
 		where not exists (select 1 from series h where h.source_id = u.source_id and h.payload is not null)

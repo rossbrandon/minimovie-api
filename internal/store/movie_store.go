@@ -71,9 +71,9 @@ func (s *MovieStore) UpsertHydrated(ctx context.Context, db DBTX, m Movie) (int,
 	}
 
 	id, err := scanID(db.QueryRow(ctx, `
-		insert into movies (source_id, title, original_title, overview, release_date, runtime_minutes, popularity,
+		insert into movies (id, source_id, title, original_title, overview, release_date, runtime_minutes, popularity,
 		                    vote_average, poster_path, genres, collection_id, payload, stale, fetched_at, updated_at)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, false, now(), now())
+		values ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, false, now(), now())
 		on conflict (source_id) do update set
 			title           = excluded.title,
 			original_title  = excluded.original_title,
@@ -106,8 +106,9 @@ func (s *MovieStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Skeleto
 
 	cols := skeletonColumns(rows)
 	_, err := db.Exec(ctx, `
-		insert into movies (source_id, title, original_title, overview, poster_path, release_date, vote_average, popularity, updated_at)
-		select u.source_id, u.title, u.title, u.overview, u.poster, u.release_date::date, u.vote, u.popularity, now()
+		insert into movies (id, source_id, title, original_title, overview, poster_path, release_date, vote_average,
+		                    popularity, updated_at)
+		select u.source_id, u.source_id, u.title, u.title, u.overview, u.poster, u.release_date::date, u.vote, u.popularity, now()
 		from unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::text[], $6::real[], $7::real[])
 			as u(source_id, title, overview, poster, release_date, vote, popularity)
 		where not exists (select 1 from movies h where h.source_id = u.source_id and h.payload is not null)

@@ -29,7 +29,7 @@ func TestMovieStore_UpsertHydratedAndGet(t *testing.T) {
 
 	id, err := s.UpsertHydrated(ctx, testPool, testMovie(550, "Fight Club"))
 	require.NoError(t, err)
-	require.Positive(t, id)
+	assert.Equal(t, 550, id, "a row's id is set from its source id, so it is the same in every database")
 
 	got, err := s.GetByID(ctx, id)
 	require.NoError(t, err)
@@ -103,6 +103,7 @@ func TestMovieStore_UpsertSkeletonNeverClobbersHydratedRows(t *testing.T) {
 	require.NoError(t, s.UpsertSkeleton(ctx, testPool, []Skeleton{{SourceID: 10, Title: "Export Title", Popularity: 1}}))
 	row, _ := s.GetBySourceID(ctx, 10)
 	assert.Equal(t, "Export Title", row.Title)
+	assert.Equal(t, 10, row.ID, "skeleton rows get the same id a hydration would give them")
 	assert.Equal(t, fmt.Sprintf("%d-export-title", row.ID), row.Slug, "skeleton rows get a slug too")
 	assert.Nil(t, row.Payload)
 	assert.Nil(t, row.PosterPath)
@@ -332,6 +333,7 @@ func TestSeasonStore_SkeletonsThenPayload(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, listed, 2)
 	assert.Nil(t, listed[0].Payload, "skeleton seasons have no payload yet")
+	assert.Equal(t, 3572, listed[0].ID)
 	assert.Equal(t, "Season 1", listed[0].Name)
 	ids, err := seasons.IDsBySeries(ctx, seriesID)
 	require.NoError(t, err)

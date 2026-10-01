@@ -39,7 +39,7 @@ as $$ select array_to_string($1, $2) $$;
 
 \if :is_finish
 -- Carry forward what costs money or breaks a watchlist: augur insights and series totals.
--- The restored catalog is keyed by our ids; the old tables speak the provider's ids, so join on source_id.
+-- The old tables speak the provider's ids, so join on source_id.
 do $$ begin
     if to_regclass('interesting_info') is not null then
         update people p set insights = i.data, insights_at = i.fetched_at
@@ -58,8 +58,9 @@ do $$ begin
     end if;
 end $$;
 
--- User rows referenced the provider's ids; point them at our ids. Anything that finds no catalog
--- row is listed first so it can be looked at before it is left behind.
+-- User rows hold the provider's ids, and a catalog row's id is its source_id, so they already
+-- point at the right rows and nothing is rewritten. What is listed here is any user row whose title
+-- the catalog does not hold, so it can be looked at; it keeps rendering from its stored title.
 select 'watchlist_item' as tbl, w.media_type, w.media_id as source_id
 from watchlist_item w
 left join movies m on w.media_type = 'movie'  and m.source_id = w.media_id
@@ -74,17 +75,6 @@ left join seasons se on e.media_type = 'season'  and se.source_id = e.media_id
 left join episodes ep on e.media_type = 'episode' and ep.source_id = e.media_id
 where m.id is null and s.id is null and se.id is null and ep.id is null;
 
-update watchlist_item w set media_id = m.id from movies m where w.media_type = 'movie'  and m.source_id = w.media_id;
-update watchlist_item w set media_id = s.id from series s where w.media_type = 'series' and s.source_id = w.media_id;
-
-update watch_event e set media_id = m.id  from movies m   where e.media_type = 'movie'   and m.source_id  = e.media_id;
-update watch_event e set media_id = s.id  from series s   where e.media_type = 'series'  and s.source_id  = e.media_id;
-update watch_event e set media_id = se.id from seasons se where e.media_type = 'season'  and se.source_id = e.media_id;
-update watch_event e set media_id = ep.id from episodes ep where e.media_type = 'episode' and ep.source_id = e.media_id;
-update watch_event e set series_id = s.id from series s where e.series_id is not null and s.source_id = e.series_id;
-
-update user_achievement a set earned_via_media_id = m.id from movies m where a.earned_via_media_type = 'movie'  and m.source_id = a.earned_via_media_id;
-update user_achievement a set earned_via_media_id = s.id from series s where a.earned_via_media_type = 'series' and s.source_id = a.earned_via_media_id;
 
 -- What the new binary no longer reads.
 alter table watchlist_item

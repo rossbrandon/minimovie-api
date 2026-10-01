@@ -22,8 +22,8 @@ func TestChangeWindow(t *testing.T) {
 	assert.Equal(t, day(-1), start, "no job and no hydrated row: yesterday")
 	assert.Equal(t, day(0), end)
 
-	_, err = testPool.Exec(ctx, `insert into movies (source_id, title, payload, fetched_at)
-		values (1, 'Old', '{}', now() - interval '10 days')`)
+	_, err = testPool.Exec(ctx, `insert into movies (id, source_id, title, payload, fetched_at)
+		values (1, 1, 'Old', '{}', now() - interval '10 days')`)
 	require.NoError(t, err)
 	start, _, err = svc.ChangeWindow(ctx, jobs, EntityMovie)
 	require.NoError(t, err)

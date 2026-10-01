@@ -49,8 +49,8 @@ func (s *CollectionStore) Upsert(ctx context.Context, db DBTX, c Collection) (in
 	defer metrics.TrackDbDuration(ctx, "collections.write")()
 
 	id, err := scanID(db.QueryRow(ctx, `
-		insert into collections (source_id, name, payload, fetched_at, updated_at)
-		values ($1, $2, $3, now(), now())
+		insert into collections (id, source_id, name, payload, fetched_at, updated_at)
+		values ($1, $1, $2, $3, now(), now())
 		on conflict (source_id) do update set name = excluded.name, payload = excluded.payload, fetched_at = now(), updated_at = now()
 		returning id`,
 		c.SourceID, c.Name, c.Payload))

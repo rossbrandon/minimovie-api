@@ -116,9 +116,9 @@ func (s *PersonStore) UpsertHydrated(ctx context.Context, db DBTX, p Person) (in
 	}
 
 	id, err := scanID(db.QueryRow(ctx, `
-		insert into people (source_id, name, date_of_birth, date_of_death, profile_path, known_for_department,
+		insert into people (id, source_id, name, date_of_birth, date_of_death, profile_path, known_for_department,
 		                    also_known_as, popularity, payload, stale, fetched_at, updated_at)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, now(), now())
+		values ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, false, now(), now())
 		on conflict (source_id) do update set
 			name                 = excluded.name,
 			date_of_birth        = excluded.date_of_birth,
@@ -164,8 +164,8 @@ func (s *PersonStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Person
 	}
 
 	_, err := db.Exec(ctx, `
-		insert into people (source_id, name, profile_path, known_for_department, popularity, updated_at)
-		select u.source_id, u.name, u.profile, u.department, u.popularity, now()
+		insert into people (id, source_id, name, profile_path, known_for_department, popularity, updated_at)
+		select u.source_id, u.source_id, u.name, u.profile, u.department, u.popularity, now()
 		from unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::real[]) as u(source_id, name, profile, department, popularity)
 		where not exists (select 1 from people h where h.source_id = u.source_id and h.payload is not null)
 		on conflict (source_id) do update set

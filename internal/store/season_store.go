@@ -110,8 +110,8 @@ func (s *SeasonStore) UpsertSkeletons(ctx context.Context, db DBTX, seriesID int
 		return fmt.Errorf("season store: drop unlisted seasons for series %d: %w", seriesID, err)
 	}
 	_, err = db.Exec(ctx, `
-		insert into seasons (series_id, season_number, source_id, name, updated_at)
-		select $1, u.number, u.source_id, u.name, now()
+		insert into seasons (id, series_id, season_number, source_id, name, updated_at)
+		select u.source_id, $1, u.number, u.source_id, u.name, now()
 		from unnest($2::int[], $3::int[], $4::text[]) as u(number, source_id, name)
 		on conflict (source_id) do update set
 			season_number = excluded.season_number,
@@ -127,8 +127,8 @@ func (s *SeasonStore) Upsert(ctx context.Context, db DBTX, season Season) (int, 
 	defer metrics.TrackDbDuration(ctx, "seasons.write")()
 
 	id, err := scanID(db.QueryRow(ctx, `
-		insert into seasons (series_id, season_number, source_id, name, payload, stale, fetched_at, updated_at)
-		values ($1, $2, $3, $4, $5, false, now(), now())
+		insert into seasons (id, series_id, season_number, source_id, name, payload, stale, fetched_at, updated_at)
+		values ($3, $1, $2, $3, $4, $5, false, now(), now())
 		on conflict (source_id) do update set
 			season_number = excluded.season_number, name = excluded.name, payload = excluded.payload,
 			stale = false, fetched_at = now(), updated_at = now()

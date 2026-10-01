@@ -100,8 +100,8 @@ func (s *EpisodeStore) UpsertSkeletons(ctx context.Context, db DBTX, seriesID, s
 		return fmt.Errorf("episode store: drop unlisted episodes for %d/%d: %w", seriesID, seasonNumber, err)
 	}
 	_, err = db.Exec(ctx, `
-		insert into episodes (series_id, season_number, episode_number, source_id, name, updated_at)
-		select $1, $2, u.number, u.source_id, u.name, now()
+		insert into episodes (id, series_id, season_number, episode_number, source_id, name, updated_at)
+		select u.source_id, $1, $2, u.number, u.source_id, u.name, now()
 		from unnest($3::int[], $4::int[], $5::text[]) as u(number, source_id, name)
 		on conflict (source_id) do update set
 			episode_number = excluded.episode_number,
@@ -117,8 +117,9 @@ func (s *EpisodeStore) Upsert(ctx context.Context, db DBTX, ep Episode) (int, er
 	defer metrics.TrackDbDuration(ctx, "episodes.write")()
 
 	id, err := scanID(db.QueryRow(ctx, `
-		insert into episodes (series_id, season_number, episode_number, source_id, name, payload, stale, fetched_at, updated_at)
-		values ($1, $2, $3, $4, $5, $6, false, now(), now())
+		insert into episodes (id, series_id, season_number, episode_number, source_id, name, payload, stale, fetched_at,
+		                      updated_at)
+		values ($4, $1, $2, $3, $4, $5, $6, false, now(), now())
 		on conflict (source_id) do update set
 			episode_number = excluded.episode_number, name = excluded.name, payload = excluded.payload,
 			stale = false, fetched_at = now(), updated_at = now()
