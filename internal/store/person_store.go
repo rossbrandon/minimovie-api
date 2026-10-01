@@ -20,6 +20,7 @@ const personColumns = `id, source_id, slug, name, date_of_birth, date_of_death, 
 
 type PersonDates struct {
 	ID          int
+	Slug        string
 	DateOfBirth string
 	DateOfDeath string
 	Popularity  float64
@@ -71,7 +72,7 @@ func (s *PersonStore) GetDates(ctx context.Context, sourceIDs []int) (map[int]Pe
 	defer metrics.TrackDbDuration(ctx, "people.read")()
 
 	rows, err := s.pool.Query(ctx, `
-		select id, source_id, date_of_birth, date_of_death, popularity, payload is not null
+		select id, slug, source_id, date_of_birth, date_of_death, popularity, payload is not null
 		from people where source_id = any($1)`, sourceIDs)
 	if err != nil {
 		return nil, fmt.Errorf("person store: get dates: %w", err)
@@ -82,7 +83,7 @@ func (s *PersonStore) GetDates(ctx context.Context, sourceIDs []int) (map[int]Pe
 		var sourceID int
 		var dob, dod pgtype.Date
 		var d PersonDates
-		if err := rows.Scan(&d.ID, &sourceID, &dob, &dod, &d.Popularity, &d.Fetched); err != nil {
+		if err := rows.Scan(&d.ID, &d.Slug, &sourceID, &dob, &dod, &d.Popularity, &d.Fetched); err != nil {
 			return nil, fmt.Errorf("person store: get dates: %w", err)
 		}
 		if dob.Valid {

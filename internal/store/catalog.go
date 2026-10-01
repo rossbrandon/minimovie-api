@@ -50,6 +50,11 @@ type Skeleton struct {
 	VoteAverage *float64
 }
 
+type Ref struct {
+	ID   int
+	Slug string
+}
+
 type ClaimParams struct {
 	Limit         int
 	RefreshAfter  time.Duration
@@ -92,21 +97,27 @@ func (t catalogTable) MarkStale(ctx context.Context, sourceIDs []int) (int64, er
 	return tag.RowsAffected(), nil
 }
 
-func (t catalogTable) IDsBySource(ctx context.Context, sourceIDs []int) (map[int]int, error) {
+func (t catalogTable) RefsBySource(ctx context.Context, sourceIDs []int) (map[int]Ref, error) {
+	refs := make(map[int]Ref, len(sourceIDs))
 	if len(sourceIDs) == 0 {
-		return map[int]int{}, nil
+		return refs, nil
 	}
 	defer metrics.TrackDbDuration(ctx, t.name+".read")()
 
-	rows, err := t.pool.Query(ctx, `select source_id, id from `+t.name+` where source_id = any($1)`, sourceIDs)
+	rows, err := t.pool.Query(ctx, `select source_id, id, slug from `+t.name+` where source_id = any($1)`, sourceIDs)
 	if err != nil {
-		return nil, fmt.Errorf("%s store: ids by source: %w", t.name, err)
+		return nil, fmt.Errorf("%s store: refs by source: %w", t.name, err)
 	}
-	ids, err := collectIDMap(rows)
+	var sourceID int
+	var ref Ref
+	_, err = pgx.ForEachRow(rows, []any{&sourceID, &ref.ID, &ref.Slug}, func() error {
+		refs[sourceID] = ref
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("%s store: ids by source: %w", t.name, err)
+		return nil, fmt.Errorf("%s store: refs by source: %w", t.name, err)
 	}
-	return ids, nil
+	return refs, nil
 }
 
 func (t catalogTable) DeleteBySourceID(ctx context.Context, db DBTX, sourceID int) error {

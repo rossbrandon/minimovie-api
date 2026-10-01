@@ -13,6 +13,7 @@ import (
 const watchlistSelect = `
 	select w.id, w.media_type, w.media_id,
 	       coalesce(m.title, s.name, w.media_title) as media_title,
+	       coalesce(m.slug, s.slug) as slug,
 	       coalesce(m.poster_path, s.poster_path) as poster_path,
 	       w.status, w.started_at, w.finished_at, w.last_watched_at,
 	       w.watch_count, w.episodes_watched, w.seasons_watched,
@@ -32,6 +33,7 @@ type WatchlistItem struct {
 	MediaType       string     `json:"mediaType" db:"media_type"`
 	MediaID         int        `json:"mediaId" db:"media_id"`
 	MediaTitle      string     `json:"mediaTitle" db:"media_title"`
+	Slug            *string    `json:"slug,omitempty" db:"slug"`
 	PosterPath      *string    `json:"posterPath" db:"poster_path"`
 	Status          string     `json:"status" db:"status"`
 	StartedAt       *time.Time `json:"startedAt,omitempty" db:"started_at"`

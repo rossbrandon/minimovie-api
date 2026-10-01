@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -40,6 +41,8 @@ func TestWatchlistStore_Create(t *testing.T) {
 	assert.Equal(t, "want_to_watch", item.Status)
 	assert.Equal(t, 0, item.WatchCount)
 	assert.Equal(t, "/poster.jpg", *item.PosterPath, "title details come from the catalog row")
+	require.NotNil(t, item.Slug)
+	assert.Equal(t, fmt.Sprintf("%d-test-movie", movieID), *item.Slug)
 	assert.Equal(t, []string{"Action", "Adventure"}, item.Genres)
 	require.NotNil(t, item.RuntimeMinutes)
 	assert.Equal(t, 120, *item.RuntimeMinutes)

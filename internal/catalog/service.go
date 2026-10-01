@@ -19,6 +19,8 @@ type PeopleDates map[int]store.PersonDates
 
 type IDs map[int]int
 
+type Refs map[int]store.Ref
+
 type Movie struct {
 	*tmdb.Movie
 	ID           int
@@ -29,9 +31,9 @@ type Movie struct {
 
 type Collection struct {
 	*tmdb.Collection
-	ID      int
-	Slug    string
-	PartIDs IDs
+	ID       int
+	Slug     string
+	PartRefs Refs
 }
 
 type Series struct {
@@ -57,15 +59,15 @@ type Episode struct {
 
 type Person struct {
 	*tmdb.Person
-	ID        int
-	Slug      string
-	MovieIDs  IDs
-	SeriesIDs IDs
+	ID         int
+	Slug       string
+	MovieRefs  Refs
+	SeriesRefs Refs
 }
 
 type SearchRefs struct {
-	Movies IDs
-	Series IDs
+	Movies Refs
+	Series Refs
 	People PeopleDates
 }
 
@@ -94,11 +96,11 @@ func (s *Service) Collection(ctx context.Context, id int) (*Collection, error) {
 	for _, p := range c.Parts {
 		ids = append(ids, p.ID)
 	}
-	parts, err := s.movies.IDsBySource(ctx, ids)
+	parts, err := s.movies.RefsBySource(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
-	return &Collection{Collection: &c, ID: row.ID, Slug: row.Slug, PartIDs: parts}, nil
+	return &Collection{Collection: &c, ID: row.ID, Slug: row.Slug, PartRefs: parts}, nil
 }
 
 func (s *Service) Series(ctx context.Context, id int) (*Series, error) {
@@ -185,24 +187,24 @@ func (s *Service) Person(ctx context.Context, id int) (*Person, error) {
 		return nil, err
 	}
 	movieIDs, seriesIDs := filmographyIDs(p.CombinedCredits)
-	movies, err := s.movies.IDsBySource(ctx, movieIDs)
+	movies, err := s.movies.RefsBySource(ctx, movieIDs)
 	if err != nil {
 		return nil, err
 	}
-	series, err := s.series.IDsBySource(ctx, seriesIDs)
+	series, err := s.series.RefsBySource(ctx, seriesIDs)
 	if err != nil {
 		return nil, err
 	}
-	return &Person{Person: p, ID: row.ID, Slug: row.Slug, MovieIDs: movies, SeriesIDs: series}, nil
+	return &Person{Person: p, ID: row.ID, Slug: row.Slug, MovieRefs: movies, SeriesRefs: series}, nil
 }
 
 func (s *Service) SeedSearch(ctx context.Context, results *tmdb.SearchResults) (*SearchRefs, error) {
 	refs := &SearchRefs{}
 	var err error
-	if refs.Movies, err = s.movies.IDsBySource(ctx, searchIDs(results, tmdb.MediaTypeMovie)); err != nil {
+	if refs.Movies, err = s.movies.RefsBySource(ctx, searchIDs(results, tmdb.MediaTypeMovie)); err != nil {
 		return nil, err
 	}
-	if refs.Series, err = s.series.IDsBySource(ctx, searchIDs(results, tmdb.MediaTypeTV)); err != nil {
+	if refs.Series, err = s.series.RefsBySource(ctx, searchIDs(results, tmdb.MediaTypeTV)); err != nil {
 		return nil, err
 	}
 	if refs.People, err = s.people.GetDates(ctx, searchIDs(results, tmdb.MediaTypePerson)); err != nil {

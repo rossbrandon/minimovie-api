@@ -34,6 +34,7 @@ type PersonDetails struct {
 
 type FilmCredit struct {
 	ID           int     `json:"id"`
+	Slug         string  `json:"slug,omitempty"`
 	Title        string  `json:"title"`
 	PosterPath   string  `json:"posterPath,omitempty"`
 	ReleaseDate  string  `json:"releaseDate,omitempty"`
@@ -89,8 +90,8 @@ func toPersonDetails(person *catalog.Person) *PersonDetails {
 		PhotoPath:     person.ProfilePath,
 		KnownFor:      person.KnownForDepartment,
 		AlsoKnownAs:   person.AlsoKnownAs,
-		MovieCredits:  buildFilmCredits(person.CombinedCredits, tmdb.MediaTypeMovie, person.MovieIDs),
-		SeriesCredits: buildFilmCredits(person.CombinedCredits, tmdb.MediaTypeTV, person.SeriesIDs),
+		MovieCredits:  buildFilmCredits(person.CombinedCredits, tmdb.MediaTypeMovie, person.MovieRefs),
+		SeriesCredits: buildFilmCredits(person.CombinedCredits, tmdb.MediaTypeTV, person.SeriesRefs),
 	}
 }
 
@@ -115,16 +116,17 @@ func genderToString(gender int) string {
 	}
 }
 
-func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType, ids catalog.IDs) []FilmCredit {
+func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType, refs catalog.Refs) []FilmCredit {
 	var result []FilmCredit
 
 	for _, c := range credits.Cast {
-		id, ok := ids[c.ID]
+		ref, ok := refs[c.ID]
 		if c.MediaType != string(mediaType) || !ok {
 			continue
 		}
 		result = append(result, FilmCredit{
-			ID:           id,
+			ID:           ref.ID,
+			Slug:         ref.Slug,
 			Title:        creditTitle(c.CombinedCreditBase, mediaType),
 			PosterPath:   c.PosterPath,
 			ReleaseDate:  creditDate(c.CombinedCreditBase, mediaType),
@@ -139,12 +141,13 @@ func buildFilmCredits(credits tmdb.CombinedCredits, mediaType tmdb.MediaType, id
 	}
 
 	for _, c := range credits.Crew {
-		id, ok := ids[c.ID]
+		ref, ok := refs[c.ID]
 		if c.MediaType != string(mediaType) || !ok {
 			continue
 		}
 		result = append(result, FilmCredit{
-			ID:           id,
+			ID:           ref.ID,
+			Slug:         ref.Slug,
 			Title:        creditTitle(c.CombinedCreditBase, mediaType),
 			PosterPath:   c.PosterPath,
 			ReleaseDate:  creditDate(c.CombinedCreditBase, mediaType),

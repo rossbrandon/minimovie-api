@@ -140,12 +140,13 @@ func toMovieDetails(movie *tmdb.Movie) *MovieDetails {
 func toCollectionInfo(c *catalog.Collection) *CollectionInfo {
 	parts := make([]MovieDetails, 0, len(c.Parts))
 	for _, p := range c.Parts {
-		id, ok := c.PartIDs[p.ID]
+		ref, ok := c.PartRefs[p.ID]
 		if !ok {
 			continue
 		}
 		parts = append(parts, MovieDetails{
-			ID:          id,
+			ID:          ref.ID,
+			Slug:        ref.Slug,
 			Title:       p.Title,
 			Overview:    p.Overview,
 			PosterPath:  p.PosterPath,

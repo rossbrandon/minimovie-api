@@ -94,13 +94,13 @@ func (f *fakeCatalog) Person(_ context.Context, _ int) (*catalog.Person, error) 
 
 // SeedSearch maps every result onto itself, as if each already had a row with the provider's id.
 func (f *fakeCatalog) SeedSearch(_ context.Context, results *tmdb.SearchResults) (*catalog.SearchRefs, error) {
-	refs := &catalog.SearchRefs{Movies: catalog.IDs{}, Series: catalog.IDs{}, People: catalog.PeopleDates{}}
+	refs := &catalog.SearchRefs{Movies: catalog.Refs{}, Series: catalog.Refs{}, People: catalog.PeopleDates{}}
 	for _, r := range results.Results {
 		switch r.MediaType {
 		case tmdb.MediaTypeMovie:
-			refs.Movies[r.ID] = r.ID
+			refs.Movies[r.ID] = store.Ref{ID: r.ID}
 		case tmdb.MediaTypeTV:
-			refs.Series[r.ID] = r.ID
+			refs.Series[r.ID] = store.Ref{ID: r.ID}
 		case tmdb.MediaTypePerson:
 			refs.People[r.ID] = store.PersonDates{ID: r.ID}
 		}

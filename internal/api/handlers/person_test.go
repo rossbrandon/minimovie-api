@@ -27,9 +27,9 @@ func TestGetPerson_Success(t *testing.T) {
 				{CombinedCreditBase: tmdb.CombinedCreditBase{ID: 551, MediaType: "movie"}},
 			}},
 		},
-		ID:       3,
-		Slug:     "3-brad-pitt",
-		MovieIDs: catalog.IDs{550: 7},
+		ID:        3,
+		Slug:      "3-brad-pitt",
+		MovieRefs: catalog.Refs{550: {ID: 7, Slug: "7-fight-club"}},
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/person/3-brad-pitt", nil)
@@ -47,6 +47,7 @@ func TestGetPerson_Success(t *testing.T) {
 	assert.Equal(t, "Brad Pitt", resp.Name)
 	require.Len(t, resp.MovieCredits, 1, "a title without a row is left out")
 	assert.Equal(t, 7, resp.MovieCredits[0].ID)
+	assert.Equal(t, "7-fight-club", resp.MovieCredits[0].Slug)
 	assert.Equal(t, "Male", resp.Gender)
 	require.NotNil(t, resp.CurrentAge)
 	assert.Greater(t, *resp.CurrentAge, 0)

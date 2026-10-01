@@ -30,6 +30,7 @@ type SearchResponse struct {
 
 type SearchResult struct {
 	ID          int       `json:"id"`
+	Slug        string    `json:"slug,omitempty"`
 	MediaType   MediaType `json:"mediaType"`
 	Title       string    `json:"title"`
 	Overview    string    `json:"overview,omitempty"`
@@ -105,16 +106,17 @@ func toSearchResponse(results *tmdb.SearchResults, refs *catalog.SearchRefs) *Se
 
 func toSearchResult(r tmdb.SearchResult, refs *catalog.SearchRefs) (SearchResult, bool) {
 	result := SearchResult{Overview: r.Overview}
+	var ref store.Ref
 	var ok bool
 	switch r.MediaType {
 	case tmdb.MediaTypeMovie:
-		result.ID, ok = refs.Movies[r.ID]
+		ref, ok = refs.Movies[r.ID]
 		result.MediaType = MediaTypeMovie
 		result.Title = r.Title
 		result.PosterPath = r.PosterPath
 		result.ReleaseDate = r.ReleaseDate
 	case tmdb.MediaTypeTV:
-		result.ID, ok = refs.Series[r.ID]
+		ref, ok = refs.Series[r.ID]
 		result.MediaType = MediaTypeSeries
 		result.Title = r.Name
 		result.PosterPath = r.PosterPath
@@ -122,13 +124,14 @@ func toSearchResult(r tmdb.SearchResult, refs *catalog.SearchRefs) (SearchResult
 	case tmdb.MediaTypePerson:
 		var d store.PersonDates
 		d, ok = refs.People[r.ID]
-		result.ID = d.ID
+		ref = store.Ref{ID: d.ID, Slug: d.Slug}
 		result.Age = personAge(d)
 		result.MediaType = MediaTypePerson
 		result.Title = r.Name
 		result.PosterPath = r.ProfilePath
 		result.KnownFor = r.KnownForDepartment
 	}
+	result.ID, result.Slug = ref.ID, ref.Slug
 	return result, ok
 }
 

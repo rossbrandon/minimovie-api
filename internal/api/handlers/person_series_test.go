@@ -22,7 +22,8 @@ func TestGetPersonSeriesCredits_Success(t *testing.T) {
 			}},
 		},
 		ID:     9,
-		People: catalog.PeopleDates{17419: {ID: 5}},
+		Slug:   "9-breaking-bad",
+		People: catalog.PeopleDates{17419: {ID: 5, Slug: "5-bryan-cranston"}},
 	}
 	td.catalog.seasons = map[int]*tmdb.SeasonDetails{
 		1: {
@@ -49,6 +50,8 @@ func TestGetPersonSeriesCredits_Success(t *testing.T) {
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	assert.Equal(t, 5, resp.Person.ID, "our ids, not the provider's")
 	assert.Equal(t, 9, resp.Series.ID)
+	assert.Equal(t, "5-bryan-cranston", resp.Person.Slug)
+	assert.Equal(t, "9-breaking-bad", resp.Series.Slug)
 	assert.Equal(t, 3, resp.TotalEpisodeCount)
 	assert.Equal(t, []RoleSummary{{Character: "Walter"}}, resp.Roles)
 	require.Len(t, resp.Seasons, 2)

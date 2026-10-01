@@ -29,7 +29,9 @@ Authorization: Bearer <guest-key>
 ```
 
 Ids are the catalog's own, not TMDB's, and every path id also accepts the slug form the responses
-carry (`550-fight-club`); the leading number resolves it. A nested entry without a catalog row yet
+carry (`550-fight-club`); the leading number resolves it. Every entry that links to a movie, series,
+or person carries its `slug` beside its `id`, nested ones included (cast and crew, filmography,
+collection parts, search results, watchlist items). A nested entry without a catalog row yet
 (a credited person, a filmography title, a collection part, a search result) is left out of the
 response and appears on the next read.
 
@@ -47,6 +49,7 @@ GET http://localhost:8080/search?q=fight+club
   "results": [
     {
       "id": 550,
+      "slug": "550-fight-club",
       "mediaType": "movie",
       "title": "Fight Club",
       "overview": "A ticking-Loss bomb insomniac...",
@@ -229,8 +232,8 @@ GET http://localhost:8080/series/1396-breaking-bad/person/17419-bryan-cranston/c
 
 ```json
 {
-  "person": { "id": 17419, "name": "Bryan Cranston" },
-  "series": { "id": 1396, "name": "Breaking Bad" },
+  "person": { "id": 17419, "slug": "17419-bryan-cranston", "name": "Bryan Cranston" },
+  "series": { "id": 1396, "slug": "1396-breaking-bad", "name": "Breaking Bad" },
   "totalEpisodeCount": 62,
   "roles": [{ "character": "Walter White" }],
   "seasons": [

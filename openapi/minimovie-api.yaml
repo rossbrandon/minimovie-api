@@ -7,6 +7,8 @@ info:
     Every id the API accepts or returns for movies, series, seasons, episodes, people, and
     collections is a catalog id of its own, not the provider's. Path ids may be given as the bare
     id or as the slug the responses carry (`155-the-dark-knight`); the leading number resolves it.
+    Every entry that links to a movie, series, or person carries its `slug` beside its `id`, nested
+    ones included, so a client can build every link in slug form. Seasons and episodes have no slug.
     A nested entry whose catalog row does not exist yet (a credited person, a filmography title, a
     collection part, a search result) is omitted from the response and appears on the next read.
     Network ids are the provider's.
@@ -1369,6 +1371,9 @@ components:
       properties:
         id:
           type: integer
+        slug:
+          type: string
+          description: Route form of the id; build links from it
         mediaType:
           type: string
           enum:
@@ -1474,6 +1479,9 @@ components:
       properties:
         id:
           type: integer
+        slug:
+          type: string
+          description: Route form of the id
         title:
           type: string
         overview:
@@ -1700,6 +1708,9 @@ components:
       properties:
         id:
           type: integer
+        slug:
+          type: string
+          description: Route form of the title's id
         title:
           type: string
         posterPath:
@@ -1736,6 +1747,9 @@ components:
       properties:
         id:
           type: integer
+        slug:
+          type: string
+          description: Route form of the person's id
         name:
           type: string
         photoPath:
@@ -1899,6 +1913,9 @@ components:
       properties:
         id:
           type: integer
+        slug:
+          type: string
+          description: Route form of the id
         name:
           type: string
         photoPath:
@@ -1909,6 +1926,9 @@ components:
       properties:
         id:
           type: integer
+        slug:
+          type: string
+          description: Route form of the id
         name:
           type: string
         posterPath:
@@ -2092,6 +2112,9 @@ components:
       properties:
         id:
           type: string
+        slug:
+          type: string
+          description: Route form of the title's id; absent when the title has no catalog row
         mediaType:
           type: string
           enum:

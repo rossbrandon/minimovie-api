@@ -11,6 +11,7 @@ import (
 
 type Person struct {
 	ID           int    `json:"id"`
+	Slug         string `json:"slug,omitempty"`
 	Name         string `json:"name"`
 	PhotoPath    string `json:"photoPath,omitempty"`
 	Role         string `json:"role,omitempty"`
@@ -174,7 +175,7 @@ func mapPeople(persons []Person, people catalog.PeopleDates, startDate, endDate 
 		if !ok {
 			continue
 		}
-		p.ID = d.ID
+		p.ID, p.Slug = d.ID, d.Slug
 		kept = append(kept, withAges(p, d, startDate, endDate))
 	}
 	return kept

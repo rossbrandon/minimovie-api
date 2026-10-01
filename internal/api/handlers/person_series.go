@@ -15,12 +15,14 @@ import (
 
 type PersonSummary struct {
 	ID        int    `json:"id"`
+	Slug      string `json:"slug,omitempty"`
 	Name      string `json:"name"`
 	PhotoPath string `json:"photoPath,omitempty"`
 }
 
 type SeriesSummary struct {
 	ID         int    `json:"id"`
+	Slug       string `json:"slug,omitempty"`
 	Name       string `json:"name"`
 	PosterPath string `json:"posterPath,omitempty"`
 }
@@ -95,11 +97,13 @@ func (h *Handlers) GetPersonSeriesCredits(w http.ResponseWriter, r *http.Request
 	httputil.JSON(w, http.StatusOK, PersonSeriesCredits{
 		Person: PersonSummary{
 			ID:        personID,
+			Slug:      sr.People[member.ID].Slug,
 			Name:      member.Name,
 			PhotoPath: member.ProfilePath,
 		},
 		Series: SeriesSummary{
 			ID:         sr.ID,
+			Slug:       sr.Slug,
 			Name:       sr.Name,
 			PosterPath: sr.PosterPath,
 		},

@@ -26,7 +26,7 @@ func TestGetMovie_Success(t *testing.T) {
 		},
 		ID:     7,
 		Slug:   "7-fight-club",
-		People: catalog.PeopleDates{287: {ID: 3, DateOfBirth: "1963-12-18"}},
+		People: catalog.PeopleDates{287: {ID: 3, Slug: "3-brad-pitt", DateOfBirth: "1963-12-18"}},
 	}
 
 	for _, id := range []string{"7", "7-fight-club"} {
@@ -46,6 +46,7 @@ func TestGetMovie_Success(t *testing.T) {
 		assert.Equal(t, []string{"Drama"}, resp.Genres)
 		require.Len(t, resp.Credits.Cast, 1, "a credited person without a row is left out")
 		assert.Equal(t, 3, resp.Credits.Cast[0].ID)
+		assert.Equal(t, "3-brad-pitt", resp.Credits.Cast[0].Slug)
 		assert.Equal(t, "1963-12-18", resp.Credits.Cast[0].Birthday)
 	}
 }

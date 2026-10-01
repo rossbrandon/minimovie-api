@@ -68,6 +68,7 @@ func TestMovie_FreshRowMakesNoProviderCalls(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("%d-fight-club", id), m.Slug)
 	assert.Equal(t, "Fight Club", m.Title)
 	assert.Equal(t, "1962-08-28", m.People[7467].DateOfBirth)
+	assert.Equal(t, fmt.Sprintf("%d-david-fincher", m.People[7467].ID), m.People[7467].Slug)
 	assert.Positive(t, m.People[7474].ID, "a list-grade person still maps to a row")
 	assert.False(t, m.People[7474].Fetched)
 	assert.Zero(t, f.count("movie"))
@@ -167,7 +168,8 @@ func TestMovie_ConcurrentMissesShareOneFetchAndSeedInBackground(t *testing.T) {
 	assert.Equal(t, "Fight Club Collection", c.Name)
 	part2, err := store.NewMovieStore(testPool).GetBySourceID(ctx, 551)
 	require.NoError(t, err)
-	assert.Equal(t, IDs{550: id, 551: part2.ID}, c.PartIDs, "parts map from the second load on")
+	expected := Refs{550: {ID: id, Slug: m.Slug}, 551: {ID: part2.ID, Slug: part2.Slug}}
+	assert.Equal(t, expected, c.PartRefs, "parts map from the second load on")
 }
 
 func TestMovie_GoneAtProviderDeletesTheRow(t *testing.T) {
@@ -337,8 +339,8 @@ func TestPerson_MapsFilmographyOnceSeeded(t *testing.T) {
 
 	got, err = svc.Person(ctx, skeleton.ID)
 	require.NoError(t, err)
-	assert.Len(t, got.MovieIDs, 1, "filmography maps once the seed has run")
-	assert.Len(t, got.SeriesIDs, 1)
+	assert.Len(t, got.MovieRefs, 1, "filmography maps once the seed has run")
+	assert.Len(t, got.SeriesRefs, 1)
 }
 
 func TestSeedSearch_MapsHeldRowsAndSeedsTheRest(t *testing.T) {
@@ -355,7 +357,8 @@ func TestSeedSearch_MapsHeldRowsAndSeedsTheRest(t *testing.T) {
 
 	refs, err := svc.SeedSearch(ctx, results)
 	require.NoError(t, err)
-	assert.Equal(t, IDs{550: held}, refs.Movies, "only rows we hold map on this page")
+	expected := Refs{550: {ID: held, Slug: fmt.Sprintf("%d-fight-club", held)}}
+	assert.Equal(t, expected, refs.Movies, "only rows we hold map on this page")
 	assert.Empty(t, refs.People)
 
 	require.NoError(t, svc.bg.Wait(ctx))

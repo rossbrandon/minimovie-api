@@ -3,8 +3,6 @@ package catalog
 import (
 	"context"
 	"fmt"
-	"maps"
-	"slices"
 	"time"
 
 	"github.com/rossbrandon/minimovie-api/internal/store"
@@ -74,11 +72,14 @@ func (s *Service) SyncChanges(
 	}
 	// A changed series may have changed its seasons and episodes too.
 	// Their documents are refreshed on the next request.
-	held, err := s.series.IDsBySource(ctx, ids)
+	held, err := s.series.RefsBySource(ctx, ids)
 	if err != nil {
 		return len(ids), marked, err
 	}
-	seriesIDs := slices.Collect(maps.Values(held))
+	seriesIDs := make([]int, 0, len(held))
+	for _, ref := range held {
+		seriesIDs = append(seriesIDs, ref.ID)
+	}
 	if _, err := s.seasons.MarkStaleBySeries(ctx, seriesIDs); err != nil {
 		return len(ids), marked, err
 	}
