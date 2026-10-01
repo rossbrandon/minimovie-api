@@ -110,6 +110,7 @@ func (s *MovieStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Skeleto
 		select u.source_id, u.title, u.title, u.overview, u.poster, u.release_date::date, u.vote, u.popularity, now()
 		from unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::text[], $6::real[], $7::real[])
 			as u(source_id, title, overview, poster, release_date, vote, popularity)
+		where not exists (select 1 from movies h where h.source_id = u.source_id and h.payload is not null)
 		on conflict (source_id) do update set
 			popularity   = case when movies.payload is null and excluded.popularity > 0
 			               then excluded.popularity else movies.popularity end,
@@ -144,7 +145,8 @@ func (s *MovieStore) getOne(ctx context.Context, where string, arg any) (*Movie,
 }
 
 func skeletonColumns(rows []Skeleton) skeletonArrays {
-	slices.SortFunc(rows, func(a, b Skeleton) int { return cmp.Compare(a.SourceID, b.SourceID) })
+	slices.SortStableFunc(rows, func(a, b Skeleton) int { return cmp.Compare(a.SourceID, b.SourceID) })
+	rows = slices.CompactFunc(rows, func(a, b Skeleton) bool { return a.SourceID == b.SourceID })
 	a := skeletonArrays{
 		sourceIDs:  make([]int32, len(rows)),
 		titles:     make([]string, len(rows)),

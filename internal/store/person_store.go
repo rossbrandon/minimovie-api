@@ -147,8 +147,9 @@ func (s *PersonStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Person
 	}
 	defer metrics.TrackDbDuration(ctx, "people.write")()
 
-	// Same order in every statement, so concurrent bulk upserts cannot deadlock each other.
-	slices.SortFunc(rows, func(a, b PersonSkeleton) int { return cmp.Compare(a.SourceID, b.SourceID) })
+	// Same order in every statement, so concurrent bulk upserts cannot deadlock each other
+	slices.SortStableFunc(rows, func(a, b PersonSkeleton) int { return cmp.Compare(a.SourceID, b.SourceID) })
+	rows = slices.CompactFunc(rows, func(a, b PersonSkeleton) bool { return a.SourceID == b.SourceID })
 	sourceIDs := make([]int32, len(rows))
 	names := make([]string, len(rows))
 	profiles := make([]*string, len(rows))
@@ -166,6 +167,7 @@ func (s *PersonStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Person
 		insert into people (source_id, name, profile_path, known_for_department, popularity, updated_at)
 		select u.source_id, u.name, u.profile, u.department, u.popularity, now()
 		from unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::real[]) as u(source_id, name, profile, department, popularity)
+		where not exists (select 1 from people h where h.source_id = u.source_id and h.payload is not null)
 		on conflict (source_id) do update set
 			popularity           = case when people.payload is null and excluded.popularity > 0
 			                       then excluded.popularity else people.popularity end,

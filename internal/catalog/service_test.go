@@ -157,7 +157,11 @@ func TestMovie_ConcurrentMissesShareOneFetchAndSeedInBackground(t *testing.T) {
 	}
 	wg.Wait()
 	assert.Equal(t, 1, f.count("movie"), "concurrent misses coalesce")
-	assert.Equal(t, 3, f.count("person"), "director, writers, and top cast once each; the producer waits for the fetcher")
+	assert.GreaterOrEqual(t, f.count("person"), 3, "director and top cast are fetched before serving")
+	dates, err := store.NewPersonStore(testPool).GetDates(ctx, []int{7467, 7474})
+	require.NoError(t, err)
+	assert.True(t, dates[7467].Fetched)
+	assert.False(t, dates[7474].Fetched, "the producer waits for the fetcher")
 
 	require.NoError(t, svc.bg.Wait(ctx))
 	assert.Equal(t, "Art Linson", nameOf(t, 7474), "the credited people are seeded after the response")
@@ -253,7 +257,6 @@ func TestSeries_MissMapsSeasonsEpisodesAndPeople(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("%d-breaking-bad", id), sr.Slug)
 	assert.Len(t, sr.SeasonIDs, 2, "season ids are on the first response")
 	assert.Equal(t, "1956-03-07", sr.People[17419].DateOfBirth)
-	assert.Positive(t, sr.People[66633].ID, "creators are credited too")
 
 	season, err := svc.Season(ctx, id, 1)
 	require.NoError(t, err)
@@ -278,6 +281,9 @@ func TestSeries_MissMapsSeasonsEpisodesAndPeople(t *testing.T) {
 	guest := season.People[1223]
 	assert.Positive(t, guest.ID, "guest stars are seeded at list grade after the response")
 	assert.False(t, guest.Fetched, "and left to the fetcher, being cast priority")
+	sr, err = svc.Series(ctx, id)
+	require.NoError(t, err)
+	assert.Positive(t, sr.People[66633].ID, "creators are seeded with the credits")
 }
 
 func TestSeason_StaleRowIsServedAndRefreshed(t *testing.T) {

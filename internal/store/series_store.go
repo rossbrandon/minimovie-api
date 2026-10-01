@@ -107,6 +107,7 @@ func (s *SeriesStore) UpsertSkeleton(ctx context.Context, db DBTX, rows []Skelet
 		select u.source_id, u.name, u.name, u.overview, u.poster, u.first_air_date::date, u.vote, u.popularity, now()
 		from unnest($1::int[], $2::text[], $3::text[], $4::text[], $5::text[], $6::real[], $7::real[])
 			as u(source_id, name, overview, poster, first_air_date, vote, popularity)
+		where not exists (select 1 from series h where h.source_id = u.source_id and h.payload is not null)
 		on conflict (source_id) do update set
 			popularity     = case when series.payload is null and excluded.popularity > 0
 			                 then excluded.popularity else series.popularity end,

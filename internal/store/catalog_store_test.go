@@ -126,15 +126,56 @@ func TestMovieStore_UpsertSkeletonNeverClobbersHydratedRows(t *testing.T) {
 	require.NoError(t, err)
 	hydrated, _ := s.GetBySourceID(ctx, 10)
 
-	time.Sleep(10 * time.Millisecond)
 	require.NoError(t, s.UpsertSkeleton(ctx, testPool, []Skeleton{{SourceID: 10, Title: "Export Again", Popularity: 4, Overview: strp("x")}}))
 	after, _ := s.GetBySourceID(ctx, 10)
 	assert.Equal(t, "Hydrated Title", after.Title, "hydrated fields are kept")
 	assert.Nil(t, after.Overview)
 	assert.Equal(t, hydrated.Popularity, after.Popularity, "a hydrated row keeps the API's popularity; exports and credit lists no longer move it")
 	assert.Equal(t, hydrated.FetchedAt, after.FetchedAt, "a skeleton refresh never extends a payload's life")
-	assert.True(t, after.UpdatedAt.After(hydrated.UpdatedAt), "every write bumps updated_at")
+	assert.Equal(t, hydrated.UpdatedAt, after.UpdatedAt, "a list-grade upsert leaves a hydrated row untouched")
 	assert.Equal(t, hydrated.ID, after.ID)
+}
+
+func TestUpsertSkeleton_RepeatedIDsAreWrittenOnce(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+
+	movies := NewMovieStore(testPool)
+	require.NoError(t, movies.UpsertSkeleton(ctx, testPool, []Skeleton{
+		{SourceID: 20, Title: "Part"}, {SourceID: 21, Title: "Other"}, {SourceID: 20, Title: "Part"},
+	}), "a collection can list the same part twice")
+	row, err := movies.GetBySourceID(ctx, 20)
+	require.NoError(t, err)
+	assert.Equal(t, "Part", row.Title)
+
+	people := NewPersonStore(testPool)
+	require.NoError(t, people.UpsertSkeleton(ctx, testPool, []PersonSkeleton{
+		{SourceID: 7, Name: "Twice"}, {SourceID: 7, Name: "Twice"},
+	}))
+}
+
+// A hydrator holds row locks on what it has claimed while it needs a second pool connection. A
+// list-grade upsert that waited on those locks could fill the pool and stall the run.
+func TestUpsertSkeleton_DoesNotWaitOnALockedHydratedRow(t *testing.T) {
+	truncateAll(t)
+	ctx := context.Background()
+	s := NewMovieStore(testPool)
+	_, err := s.UpsertHydrated(ctx, testPool, testMovie(30, "Claimed"))
+	require.NoError(t, err)
+
+	tx, err := testPool.Begin(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(ctx) //nolint:errcheck
+	_, err = tx.Exec(ctx, `select 1 from movies where source_id = 30 for update`)
+	require.NoError(t, err)
+
+	short, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	err = s.UpsertSkeleton(short, testPool, []Skeleton{{SourceID: 30, Title: "List"}, {SourceID: 31, Title: "New"}})
+	require.NoError(t, err, "the hydrated row is skipped, so its lock is never waited on")
+	added, err := s.GetBySourceID(ctx, 31)
+	require.NoError(t, err)
+	assert.NotNil(t, added, "the rest of the list is still written")
 }
 
 func TestPersonStore_GetDatesReportsHydration(t *testing.T) {
