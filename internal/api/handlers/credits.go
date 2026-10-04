@@ -35,6 +35,7 @@ type Credits struct {
 	ProductionDesign []Person `json:"productionDesign,omitempty"`
 	CostumeDesign    []Person `json:"costumeDesign,omitempty"`
 	Casting          []Person `json:"casting,omitempty"`
+	Other            []Person `json:"other,omitempty"`
 }
 
 type crewBuilder struct {
@@ -47,6 +48,7 @@ type crewBuilder struct {
 	ProductionDesign []Person
 	CostumeDesign    []Person
 	Casting          []Person
+	Other            []Person
 }
 
 func (cb *crewBuilder) add(person Person, job string) {
@@ -69,6 +71,8 @@ func (cb *crewBuilder) add(person Person, job string) {
 		cb.CostumeDesign = append(cb.CostumeDesign, person)
 	case tmdb.JobCasting:
 		cb.Casting = append(cb.Casting, person)
+	default:
+		cb.Other = append(cb.Other, person)
 	}
 }
 
@@ -106,6 +110,7 @@ func buildCredits(credits tmdb.Credits) *Credits {
 		ProductionDesign: crew.ProductionDesign,
 		CostumeDesign:    crew.CostumeDesign,
 		Casting:          crew.Casting,
+		Other:            crew.Other,
 	}
 }
 
@@ -150,6 +155,7 @@ func buildAggregateCredits(credits tmdb.AggregateCredits) *Credits {
 		ProductionDesign: crew.ProductionDesign,
 		CostumeDesign:    crew.CostumeDesign,
 		Casting:          crew.Casting,
+		Other:            crew.Other,
 	}
 }
 
@@ -161,7 +167,7 @@ func applyPeople(credits *Credits, people catalog.PeopleDates, startDate, endDat
 	buckets := []*[]Person{
 		&credits.Cast, &credits.Directors, &credits.Writers, &credits.Producers, &credits.Composers,
 		&credits.Cinematographers, &credits.Editors, &credits.ProductionDesign, &credits.CostumeDesign,
-		&credits.Casting,
+		&credits.Casting, &credits.Other,
 	}
 	for _, bucket := range buckets {
 		*bucket = mapPeople(*bucket, people, startDate, endDate)

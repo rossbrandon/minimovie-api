@@ -35,6 +35,15 @@ end $$;
 create or replace function immutable_array_to_string(text[], text)
 returns text language sql immutable parallel safe
 as $$ select array_to_string($1, $2) $$;
+
+-- The restored tables' generated slug column calls these, so they must exist before the restore.
+create or replace function immutable_unaccent(text)
+returns text language sql immutable parallel safe
+as $$ select public.unaccent($1) $$;
+
+create or replace function slugify(text)
+returns text language sql immutable parallel safe
+as $$ select trim(both '-' from regexp_replace(lower(public.immutable_unaccent(coalesce($1, ''))), '[^a-z0-9]+', '-', 'g')) $$;
 \endif
 
 \if :is_finish

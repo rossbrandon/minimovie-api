@@ -35,12 +35,12 @@ as $$ select array_to_string($1, $2) $$;
 -- unaccent() itself is STABLE; wrapping it makes the same promise the text search configuration makes.
 create or replace function immutable_unaccent(text)
 returns text language sql immutable parallel safe
-as $$ select unaccent($1) $$;
+as $$ select public.unaccent($1) $$;
 
 -- slugify lowercases, strips accents, and collapses everything else to single dashes: 'Amélie' -> 'amelie'.
 create or replace function slugify(text)
 returns text language sql immutable parallel safe
-as $$ select trim(both '-' from regexp_replace(lower(immutable_unaccent(coalesce($1, ''))), '[^a-z0-9]+', '-', 'g')) $$;
+as $$ select trim(both '-' from regexp_replace(lower(public.immutable_unaccent(coalesce($1, ''))), '[^a-z0-9]+', '-', 'g')) $$;
 
 -- ============================================================
 -- Catalog Entity Tables

@@ -16,6 +16,7 @@ import (
 const (
 	providerCountry           = "US"
 	defaultPeoplePerHydration = 10
+	defaultBackgroundFetches  = 25
 	personFetchConcurrency    = 15
 )
 
@@ -33,17 +34,18 @@ var ErrNotFound = errors.New("catalog: not found")
 type Entity int
 
 type Deps struct {
-	Pool               *pgxpool.Pool
-	Movies             *store.MovieStore
-	Series             *store.SeriesStore
-	Seasons            *store.SeasonStore
-	Episodes           *store.EpisodeStore
-	People             *store.PersonStore
-	Collections        *store.CollectionStore
-	TMDB               tmdb.MediaClient
-	PeoplePerHydration int
-	MaxFetchPerRequest int
-	BG                 *background.Group
+	Pool                         *pgxpool.Pool
+	Movies                       *store.MovieStore
+	Series                       *store.SeriesStore
+	Seasons                      *store.SeasonStore
+	Episodes                     *store.EpisodeStore
+	People                       *store.PersonStore
+	Collections                  *store.CollectionStore
+	TMDB                         tmdb.MediaClient
+	PeoplePerHydration           int
+	MaxFetchPerRequest           int
+	MaxBackgroundFetchPerRequest int
+	BG                           *background.Group
 }
 
 type Service struct {
@@ -58,11 +60,13 @@ type Service struct {
 
 	peoplePerHydration int
 	maxFetchPerRequest int
-	bg                 *background.Group
-	sf                 singleflight.Group
-	fetchQueue         chan int
-	fetchWG            sync.WaitGroup
-	stopFetch          context.CancelFunc
+
+	maxBackgroundFetchPerRequest int
+	bg                           *background.Group
+	sf                           singleflight.Group
+	fetchQueue                   chan int
+	fetchWG                      sync.WaitGroup
+	stopFetch                    context.CancelFunc
 }
 
 func New(d Deps) *Service {
@@ -71,6 +75,9 @@ func New(d Deps) *Service {
 	}
 	if d.MaxFetchPerRequest <= 0 {
 		d.MaxFetchPerRequest = defaultPeoplePerHydration
+	}
+	if d.MaxBackgroundFetchPerRequest <= 0 {
+		d.MaxBackgroundFetchPerRequest = defaultBackgroundFetches
 	}
 	if d.BG == nil {
 		d.BG = &background.Group{}
@@ -86,7 +93,9 @@ func New(d Deps) *Service {
 		tmdb:               d.TMDB,
 		peoplePerHydration: d.PeoplePerHydration,
 		maxFetchPerRequest: d.MaxFetchPerRequest,
-		bg:                 d.BG,
+
+		maxBackgroundFetchPerRequest: d.MaxBackgroundFetchPerRequest,
+		bg:                           d.BG,
 	}
 }
 

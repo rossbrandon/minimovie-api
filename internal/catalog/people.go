@@ -186,7 +186,9 @@ func (s *Service) seedPeople(ctx context.Context, db store.DBTX, refs []PersonRe
 }
 
 // peopleDates maps credited people to their rows and dates. Gaps among the director, writers, and
-// top cast are fetched now, up to the request cap; every other gap goes to the fetcher.
+// top cast are fetched now, up to the request cap; the most useful of the other gaps go to the
+// fetcher, up to the background cap, so one page view costs a bounded number of TMDB calls and
+// repeated views walk down the credit list.
 func (s *Service) peopleDates(ctx context.Context, refs []PersonRef) (PeopleDates, error) {
 	dctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), missTimeout)
 	defer cancel()
@@ -194,14 +196,24 @@ func (s *Service) peopleDates(ctx context.Context, refs []PersonRef) (PeopleDate
 	if err != nil {
 		return nil, err
 	}
-	var gaps []int
+	s.enqueuePeople(queuedGaps(refs, known, s.maxBackgroundFetchPerRequest))
+	return known, nil
+}
+
+// queuedGaps picks up to limit unhydrated people in priority order.
+func queuedGaps(refs []PersonRef, known PeopleDates, limit int) []int {
+	gaps := make([]PersonRef, 0, len(refs))
 	for _, r := range uniqueRefs(refs) {
 		if !known[r.SourceID].Fetched {
-			gaps = append(gaps, r.SourceID)
+			gaps = append(gaps, r)
 		}
 	}
-	s.enqueuePeople(gaps)
-	return known, nil
+	sort.SliceStable(gaps, func(i, j int) bool { return gaps[i].Priority < gaps[j].Priority })
+	ids := make([]int, 0, min(limit, len(gaps)))
+	for _, r := range gaps[:min(limit, len(gaps))] {
+		ids = append(ids, r.SourceID)
+	}
+	return ids
 }
 
 // fetchPriorityPeople hydrates up to limit of the director, writers, and top cast that have no

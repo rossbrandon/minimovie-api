@@ -13,42 +13,43 @@ import (
 )
 
 type Config struct {
-	Port                   string
-	Timeout                int
-	LogLevel               string
-	TmdbBaseUrl            string
-	TmdbTimeout            int
-	TmdbAccessToken        string
-	TmdbRateLimit          float64
-	MiniMovieUiSecret      string
-	DatabaseURL            string
-	MaxTmdbFetchPerRequest int
-	SyncHydrateBudget      int
-	DbMaxConns             int
-	DbMinConns             int
-	OTelEnabled            bool
-	CacheMaxAge            int
-	AnthropicApiKey        string
-	AugurModel             string
-	AugurMaxTokens         int
-	AugurMaxRetries        int
-	AugurMinConfidence     float64
-	AugurTimeout           int
-	IsProduction           bool
-	GoogleClientID         string
-	GoogleClientSecret     string
-	GoogleIssuerURL        string
-	AppleClientID          string
-	AppleTeamID            string
-	AppleKeyID             string
-	ApplePrivateKey        []byte
-	AppleIssuerURL         string
-	AuthBaseURL            string
-	AuthUIBaseURL          string
-	SessionSecret          []byte
-	CookieHashKey          []byte
-	CookieEncKey           []byte
-	TokenEncryptionKey     []byte
+	Port                         string
+	Timeout                      int
+	LogLevel                     string
+	TmdbBaseUrl                  string
+	TmdbTimeout                  int
+	TmdbAccessToken              string
+	TmdbRateLimit                float64
+	MiniMovieUiSecret            string
+	DatabaseURL                  string
+	MaxTmdbFetchPerRequest       int
+	MaxBackgroundFetchPerRequest int
+	SyncHydrateBudget            int
+	DbMaxConns                   int
+	DbMinConns                   int
+	OTelEnabled                  bool
+	CacheMaxAge                  int
+	AnthropicApiKey              string
+	AugurModel                   string
+	AugurMaxTokens               int
+	AugurMaxRetries              int
+	AugurMinConfidence           float64
+	AugurTimeout                 int
+	IsProduction                 bool
+	GoogleClientID               string
+	GoogleClientSecret           string
+	GoogleIssuerURL              string
+	AppleClientID                string
+	AppleTeamID                  string
+	AppleKeyID                   string
+	ApplePrivateKey              []byte
+	AppleIssuerURL               string
+	AuthBaseURL                  string
+	AuthUIBaseURL                string
+	SessionSecret                []byte
+	CookieHashKey                []byte
+	CookieEncKey                 []byte
+	TokenEncryptionKey           []byte
 }
 
 const defaultPort = "8080"
@@ -58,6 +59,7 @@ const defaultTmdbBaseUrl = "https://api.themoviedb.org/3"
 const defaultTmdbTimeout int = 10
 const defaultTmdbRateLimit float64 = 20
 const defaultMaxTmdbFetchPerRequest int = 10
+const defaultMaxBackgroundFetchPerRequest int = 25
 const defaultSyncHydrateBudget int = 2000
 const defaultDbMaxConns int = 20
 const defaultDbMinConns int = 5
@@ -83,30 +85,32 @@ func Load() (*Config, error) {
 		MiniMovieUiSecret:      os.Getenv("MINI_MOVIE_UI_SECRET"),
 		DatabaseURL:            required(&errs, "DATABASE_URL"),
 		MaxTmdbFetchPerRequest: env(&errs, "MAX_TMDB_FETCH_PER_REQUEST", defaultMaxTmdbFetchPerRequest, strconv.Atoi),
-		SyncHydrateBudget:      env(&errs, "SYNC_HYDRATE_BUDGET", defaultSyncHydrateBudget, strconv.Atoi),
-		DbMaxConns:             env(&errs, "DB_MAX_CONNS", defaultDbMaxConns, strconv.Atoi),
-		DbMinConns:             env(&errs, "DB_MIN_CONNS", defaultDbMinConns, strconv.Atoi),
-		OTelEnabled:            env(&errs, "OTEL_ENABLED", false, strconv.ParseBool),
-		CacheMaxAge:            env(&errs, "CACHE_MAX_AGE", defaultCacheMaxAge, strconv.Atoi),
-		AnthropicApiKey:        os.Getenv("ANTHROPIC_API_KEY"),
-		AugurModel:             cmp.Or(os.Getenv("AUGUR_MODEL"), defaultAugurModel),
-		AugurMaxTokens:         env(&errs, "AUGUR_MAX_TOKENS", defaultAugurMaxTokens, strconv.Atoi),
-		AugurMaxRetries:        env(&errs, "AUGUR_MAX_RETRIES", defaultAugurMaxRetries, strconv.Atoi),
-		AugurMinConfidence:     env(&errs, "AUGUR_MIN_CONFIDENCE", defaultAugurMinConfidence, parseFloat),
-		AugurTimeout:           env(&errs, "AUGUR_TIMEOUT", defaultAugurTimeout, strconv.Atoi),
-		IsProduction:           os.Getenv("ENV") == "production",
-		GoogleClientID:         os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret:     os.Getenv("GOOGLE_CLIENT_SECRET"),
-		GoogleIssuerURL:        cmp.Or(os.Getenv("GOOGLE_ISSUER_URL"), defaultGoogleIssuerURL),
-		AppleClientID:          os.Getenv("APPLE_CLIENT_ID"),
-		AppleTeamID:            os.Getenv("APPLE_TEAM_ID"),
-		AppleKeyID:             os.Getenv("APPLE_KEY_ID"),
-		ApplePrivateKey:        env(&errs, "APPLE_PRIVATE_KEY", nil, base64.StdEncoding.DecodeString),
-		AppleIssuerURL:         cmp.Or(os.Getenv("APPLE_ISSUER_URL"), defaultAppleIssuerURL),
-		AuthBaseURL:            os.Getenv("AUTH_BASE_URL"),
-		AuthUIBaseURL:          os.Getenv("AUTH_UI_BASE_URL"),
-		SessionSecret:          env(&errs, "SESSION_SECRET", nil, base64.StdEncoding.DecodeString),
-		TokenEncryptionKey:     env(&errs, "TOKEN_ENCRYPTION_KEY", nil, base64.StdEncoding.DecodeString),
+		MaxBackgroundFetchPerRequest: env(&errs, "MAX_BACKGROUND_FETCH_PER_REQUEST",
+			defaultMaxBackgroundFetchPerRequest, strconv.Atoi),
+		SyncHydrateBudget:  env(&errs, "SYNC_HYDRATE_BUDGET", defaultSyncHydrateBudget, strconv.Atoi),
+		DbMaxConns:         env(&errs, "DB_MAX_CONNS", defaultDbMaxConns, strconv.Atoi),
+		DbMinConns:         env(&errs, "DB_MIN_CONNS", defaultDbMinConns, strconv.Atoi),
+		OTelEnabled:        env(&errs, "OTEL_ENABLED", false, strconv.ParseBool),
+		CacheMaxAge:        env(&errs, "CACHE_MAX_AGE", defaultCacheMaxAge, strconv.Atoi),
+		AnthropicApiKey:    os.Getenv("ANTHROPIC_API_KEY"),
+		AugurModel:         cmp.Or(os.Getenv("AUGUR_MODEL"), defaultAugurModel),
+		AugurMaxTokens:     env(&errs, "AUGUR_MAX_TOKENS", defaultAugurMaxTokens, strconv.Atoi),
+		AugurMaxRetries:    env(&errs, "AUGUR_MAX_RETRIES", defaultAugurMaxRetries, strconv.Atoi),
+		AugurMinConfidence: env(&errs, "AUGUR_MIN_CONFIDENCE", defaultAugurMinConfidence, parseFloat),
+		AugurTimeout:       env(&errs, "AUGUR_TIMEOUT", defaultAugurTimeout, strconv.Atoi),
+		IsProduction:       os.Getenv("ENV") == "production",
+		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleIssuerURL:    cmp.Or(os.Getenv("GOOGLE_ISSUER_URL"), defaultGoogleIssuerURL),
+		AppleClientID:      os.Getenv("APPLE_CLIENT_ID"),
+		AppleTeamID:        os.Getenv("APPLE_TEAM_ID"),
+		AppleKeyID:         os.Getenv("APPLE_KEY_ID"),
+		ApplePrivateKey:    env(&errs, "APPLE_PRIVATE_KEY", nil, base64.StdEncoding.DecodeString),
+		AppleIssuerURL:     cmp.Or(os.Getenv("APPLE_ISSUER_URL"), defaultAppleIssuerURL),
+		AuthBaseURL:        os.Getenv("AUTH_BASE_URL"),
+		AuthUIBaseURL:      os.Getenv("AUTH_UI_BASE_URL"),
+		SessionSecret:      env(&errs, "SESSION_SECRET", nil, base64.StdEncoding.DecodeString),
+		TokenEncryptionKey: env(&errs, "TOKEN_ENCRYPTION_KEY", nil, base64.StdEncoding.DecodeString),
 	}
 	if err := errors.Join(errs...); err != nil {
 		return nil, err

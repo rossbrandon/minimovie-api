@@ -1888,6 +1888,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Person"
+        other:
+          type: array
+          description: Every crew credit outside the named groups, with role set to the job. Can be long on big productions
+          items:
+            $ref: "#/components/schemas/Person"
 
     PersonSeriesCredits:
       type: object

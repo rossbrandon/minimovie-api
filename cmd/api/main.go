@@ -92,16 +92,17 @@ func main() {
 	})
 	var bg background.Group
 	svc := catalog.New(catalog.Deps{
-		Pool:               pool,
-		Movies:             store.NewMovieStore(pool),
-		Series:             store.NewSeriesStore(pool),
-		Seasons:            store.NewSeasonStore(pool),
-		Episodes:           store.NewEpisodeStore(pool),
-		People:             personStore,
-		Collections:        store.NewCollectionStore(pool),
-		TMDB:               tmdbClient,
-		BG:                 &bg,
-		MaxFetchPerRequest: cfg.MaxTmdbFetchPerRequest,
+		Pool:                         pool,
+		Movies:                       store.NewMovieStore(pool),
+		Series:                       store.NewSeriesStore(pool),
+		Seasons:                      store.NewSeasonStore(pool),
+		Episodes:                     store.NewEpisodeStore(pool),
+		People:                       personStore,
+		Collections:                  store.NewCollectionStore(pool),
+		TMDB:                         tmdbClient,
+		BG:                           &bg,
+		MaxFetchPerRequest:           cfg.MaxTmdbFetchPerRequest,
+		MaxBackgroundFetchPerRequest: cfg.MaxBackgroundFetchPerRequest,
 	})
 	svc.Start()
 

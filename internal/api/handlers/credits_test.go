@@ -7,6 +7,7 @@ import (
 
 	"github.com/rossbrandon/minimovie-api/internal/catalog"
 	"github.com/rossbrandon/minimovie-api/internal/store"
+	"github.com/rossbrandon/minimovie-api/internal/tmdb"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -95,4 +96,13 @@ func TestApplyPeople(t *testing.T) {
 
 func TestApplyPeople_NilCredits(t *testing.T) {
 	applyPeople(nil, catalog.PeopleDates{1: store.PersonDates{ID: 1}}, "", "")
+}
+
+func TestBuildCredits_OtherCrew(t *testing.T) {
+	credits := buildCredits(tmdb.Credits{Crew: []tmdb.CrewMember{
+		{ID: 1, Name: "Dir", Job: tmdb.JobDirector},
+		{ID: 2, Name: "Mix", Job: "Sound Re-Recording Mixer"},
+	}})
+	assert.Equal(t, []Person{{ID: 1, Name: "Dir", Role: tmdb.JobDirector}}, credits.Directors)
+	assert.Equal(t, []Person{{ID: 2, Name: "Mix", Role: "Sound Re-Recording Mixer"}}, credits.Other)
 }
