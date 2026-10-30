@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -120,6 +121,43 @@ func TestGetChanges_WalksWindowsAndDeduplicates(t *testing.T) {
 	}, windows, "14-day windows, two pages each")
 	assert.Equal(t, int32(6), calls.Load())
 	assert.Equal(t, []int{1, 2, 101, 115, 129}, ids, "deduplicated across pages and windows, first occurrence order")
+}
+
+func TestGetChanges_HalvesWindowsWithTooManyPages(t *testing.T) {
+	var served []string
+	client, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query()
+		from, _ := time.Parse(time.DateOnly, q.Get("start_date"))
+		to, _ := time.Parse(time.DateOnly, q.Get("end_date"))
+		days := int(to.Sub(from).Hours()/24) + 1
+		if days > 3 {
+			_, _ = fmt.Fprint(w, `{"results":[],"page":1,"total_pages":501}`)
+			return
+		}
+		served = append(served, q.Get("start_date")+".."+q.Get("end_date"))
+		ids := make([]string, days)
+		for i := range ids {
+			ids[i] = fmt.Sprintf(`{"id":%d}`, from.AddDate(0, 0, i).Day())
+		}
+		_, _ = fmt.Fprintf(w, `{"results":[%s],"page":1,"total_pages":1}`, strings.Join(ids, ","))
+	}, 0)
+
+	ids, err := client.GetChanges(context.Background(), MediaTypePerson, "2026-01-01", "2026-01-14")
+	require.NoError(t, err)
+	assert.Equal(t, []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, ids, "every day read once, in order")
+	assert.Equal(t, []string{
+		"2026-01-01..2026-01-02", "2026-01-03..2026-01-04", "2026-01-05..2026-01-07",
+		"2026-01-08..2026-01-09", "2026-01-10..2026-01-11", "2026-01-12..2026-01-14",
+	}, served, "the 14-day window is halved until each piece fits in the feed's pages")
+}
+
+func TestGetChanges_OneDayWithTooManyPagesIsAnError(t *testing.T) {
+	client, _ := newTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprint(w, `{"results":[],"page":1,"total_pages":501}`)
+	}, 0)
+
+	_, err := client.GetChanges(context.Background(), MediaTypePerson, "2026-01-01", "2026-01-01")
+	require.ErrorContains(t, err, "the feed serves 500")
 }
 
 func TestGet_DoesNotRetryNotFound(t *testing.T) {
